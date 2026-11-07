@@ -4,7 +4,7 @@
 
 Hackathon project: a deterministic CLI that migrates Datadog dashboards and metric monitors to Dash0 using Perses, PromQL, and explicit telemetry mappings.
 
-**Current state: project handoff only. The CLI, fixtures, tests, and live integrations are not implemented yet.** Commands and source paths in the handoff describe the intended implementation.
+**Current state: plan 01 done.** `convert` runs offline, recognizes Datadog dashboards and monitors, and reports every widget and monitor, but it translates nothing yet: every item is `blocked` until plans 04 (dashboards) and 06 (monitors). Publishing to Dash0 isn't implemented.
 
 ## Start here
 
@@ -15,6 +15,25 @@ Hackathon project: a deterministic CLI that migrates Datadog dashboards and metr
 5. Use [the demo runbook](docs/DEMO.md) to verify the deliverable.
 
 [CLAUDE.md](CLAUDE.md) directs Claude to the same shared rules. Technical references and the challenge's submission requirements are collected in [SOURCES.md](docs/SOURCES.md).
+
+## Install, test, convert
+
+These commands were run on Node 24.22.2 / npm 11.19.1:
+
+```bash
+npm install
+```
+
+```bash
+npm test && npm run typecheck
+```
+
+```bash
+echo '{"version":1,"source":"datadog","metrics":{}}' > /tmp/empty-mapping.json
+npm run dev -- convert --source datadog --input fixtures/datadog/integrations-core/postgres --mapping /tmp/empty-mapping.json --out /tmp/conv1
+```
+
+`convert` writes `source/` (exact input copies), `dashboards/`, `rules/`, `check-rules/`, `report.json` and `manifest.json` under `--out`, which must be empty or absent. Options: `--format json|yaml` (default `json`) and `--project <name>` (default `datadog-migration`). Exit codes: `0` every item translated, `2` a partial or blocked item, `1` bad arguments, unreadable input, an invalid mapping or an unknown `--source`.
 
 ## The first deliverable
 
@@ -38,6 +57,5 @@ These are starting decisions for the empty repository. Preserve any existing imp
 - Use a dedicated feature branch, for example `codex/mvp-migrator`; keep module names and task names tool-neutral.
 - Create EU Datadog and Dash0 accounts. The challenge requires a Dash0 organization name beginning with `thinc`.
 - Copy `.env.example` to `.env` and supply credentials locally. Implement explicit `.env` loading or document shell environment setup; the template alone does not load variables.
-- Bootstrap the package and record working install/build/test/CLI commands here as soon as they exist.
 
 No install or runtime command is advertised as working until it has been implemented and checked.

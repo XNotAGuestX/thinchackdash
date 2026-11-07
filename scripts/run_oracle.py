@@ -541,9 +541,15 @@ class McpAgent0:
         def connect() -> contextlib.AbstractAsyncContextManager[Any]:
             @contextlib.asynccontextmanager
             async def session() -> AsyncIterator[Any]:
-                import httpx2  # installed with `mcp` (uv group "oracle")
-                from mcp import Client
-                from mcp.client.streamable_http import streamable_http_client
+                try:
+                    import httpx2  # installed with `mcp` (uv group "oracle")
+                    from mcp import Client
+                    from mcp.client.streamable_http import streamable_http_client
+                except ModuleNotFoundError as exc:
+                    raise SystemExit(
+                        f"missing dependency ({exc}); the opt-in oracle group is not installed. "
+                        "Run: uv run --group oracle scripts/run_oracle.py ..."
+                    ) from exc
 
                 http = httpx2.AsyncClient(
                     headers={"Authorization": f"Bearer {token}"},

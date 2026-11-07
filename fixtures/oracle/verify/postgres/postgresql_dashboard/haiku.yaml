@@ -96,48 +96,26 @@ results:
   cache: 269cc40cc284b00f
 - source_path: widgets[2].definition.requests[0]
   verdict: pass
-  reasons: []
-  method: rule
-- source_path: widgets[3].definition.requests[0]
-  verdict: block
   reasons:
-  - The candidate multiplies by the constant 100, which is not in the Datadog source. Datadog system.io.util is a percent, while system.disk.io_time rate is a busy fraction (s/s, 0 to 1), so the units differ. Per the rules the scale must not be applied in promql; it should be noted with a documentation link instead.
-  - 'The underlying quantity matches: rate of system.disk.io_time (cumulative seconds busy, monotonic sum) is the busy fraction that system.io.util expresses as a percent. Aggregation avg() across devices and the unfiltered scope match the Datadog request.'
-  - 'Grouping and series are consistent: no by-clause on either side, and the dropped $scope template variable (no prefix, default *) correctly yields all series.'
-  - The metric and labels used are valid in the dataset (system.disk.io_time is in_dataset with sum type), so no label rename is needed.
-  - Correct output is translated with avg(rate(...[$__rate_interval])) without the 100 factor, with a notes entry explaining the percent vs ratio scale.
+  - postgresql.rows_inserted, rows_deleted and rows_updated map to postgresql.tup_inserted, tup_deleted and tup_updated, which are monotonic sums counting the same rows.
+  - The per-second display is matched by rate() over the monotonic sums, with avg() aggregation and no grouping, consistent with the Datadog request.
+  - The unprefixed $scope template variable with default * is correctly dropped, so no matcher is needed.
+  - All three formulas are translated; no function appears in the Datadog request, so translating is the correct outcome.
   checks:
     quantity: ok
-    unit: differs
+    unit: ok
     aggregation: ok
     grouping: ok
     series_count: ok
-    outcome: differs
+    outcome: ok
   method: haiku
-  cache: 55e7eb347d2a5563
-- source_path: widgets[4].definition.requests[0]
-  verdict: pass
-  reasons: []
-  method: rule
-- source_path: widgets[4].definition.requests[1]
-  verdict: pass
-  reasons: []
-  method: rule
-- source_path: widgets[4].definition.requests[2]
-  verdict: pass
-  reasons: []
-  method: rule
-- source_path: widgets[5].definition.requests[0]
-  verdict: pass
-  reasons: []
-  method: rule
-- source_path: widgets[6].definition.requests[0]
-  verdict: block
+  cache: aacfa9f65d503c0e
+- source_path: widgets[3].definition.requests[0]
+  verdict: nit
   reasons:
-  - The PromQL applies a numeric constant (100) that is not in the Datadog source; the hard rules forbid this in promql. The percent-vs-ratio scale should be stated in notes with a documentation link, not applied.
-  - 'The unit differs: Datadog system.cpu.iowait is reported in percent, while system.cpu.time is a cumulative sum in seconds, so the rate is a ratio before scaling.'
-  - 'Aggregation and grouping are plausible: max over per-host averages of the wait-mode rate matches an ungrouped max over per-host series. cpu_mode is an observed dataset label, so the matcher name is correct.'
-  - The host_name label is not in the observed dataset_labels for system.cpu.time, so its presence in the PromQL grouping could not be confirmed from the provided definitions.
+  - Datadog system.io.util is a disk utilization percentage (0-100); system.disk.io_time is a monotonic sum of busy seconds, so avg(rate(...)) yields a 0-1 ratio. This is the same underlying quantity with a percent-vs-ratio unit scale of 100, which the converter must not apply in promql. Note the scale and link the OTel disk metric documentation in notes.
+  - Aggregation (avg across devices/series) and the absence of grouping match the Datadog query, and $scope with default * is correctly dropped. rate() is valid because system.disk.io_time is a monotonic sum with otel_metric_type sum.
+  - Outcome translated is correct since the metric exists in the dataset and no Datadog function is involved.
   checks:
     quantity: ok
     unit: differs
@@ -146,14 +124,65 @@ results:
     series_count: ok
     outcome: ok
   method: haiku
-  cache: 944646b056fa27bd
-- source_path: widgets[7].definition.requests[0]
+  cache: 4788e07df7ce07d0
+- source_path: widgets[4].definition.requests[0]
   verdict: pass
   reasons:
-  - system.mem.usable (available memory, including reclaimable cache) has no direct OpenTelemetry gauge equivalent; OTel system.memory.usage is split by state and would need a computed expression, so blocking with MISSING_METRIC_MAPPING is the rule-compliant outcome.
-  - The request is blocked, so quantity, unit, aggregation, grouping and series checks do not apply.
-  - The otel_metric_definitions block is empty, so the candidate's omission cannot be checked against the catalog; the verdict rests on the known semantics of the metrics.
-  - The $scope template variable has no prefix and default *, so dropping it is correct and does not affect the block decision.
+  - system.load.1 is the 1-minute system load average; system.cpu.load_average.1m is the OpenTelemetry gauge for the same 1-minute load average, so the quantity matches.
+  - Both are unitless load values (OTel unit {thread} is an annotation for the same count), so no scale is needed.
+  - Datadog's default for an ungrouped query is a single average across hosts, which matches avg() with no by-clause.
+  - The unprefixed $scope variable with default * is correctly dropped, so no matcher is needed.
+  - The gauge is selected with otel_metric_type="gauge" and no rate() is applied, which is correct.
+  - The translated outcome is correct because an exact mapping exists.
+  checks:
+    quantity: ok
+    unit: ok
+    aggregation: ok
+    grouping: ok
+    series_count: ok
+    outcome: ok
+  method: haiku
+  cache: d3d6aed03d188810
+- source_path: widgets[4].definition.requests[1]
+  verdict: pass
+  reasons:
+  - Datadog system.load.5 is the 5-minute system load average; system.cpu.load_average.5m is the same quantity as a gauge, so the metric mapping is correct.
+  - Both are dimensionless load counts (the OTel {thread} unit is an annotation, not a scale difference), so no conversion is needed.
+  - The Datadog query has no group-by, so the default cross-series avg matches the candidate's avg() with no grouping.
+  - The $scope template variable has no prefix and default *, so dropping it is correct.
+  - No Datadog function is involved and no rate() is applied to the gauge, so the translated outcome is correct.
+  checks:
+    quantity: ok
+    unit: ok
+    aggregation: ok
+    grouping: ok
+    series_count: ok
+    outcome: ok
+  method: haiku
+  cache: 52673a53bf4eb6bd
+- source_path: widgets[4].definition.requests[2]
+  verdict: pass
+  reasons:
+  - system.load.15 is the 15-minute load average, which matches the OTel gauge system.cpu.load_average.15m (unit {thread}); same quantity.
+  - The candidate uses avg() over the gauge with no grouping, matching the Datadog default aggregation across the unscoped series.
+  - The unprefixed template variable $scope with default * is correctly dropped, so no matcher is added.
+  - No rate() is applied to the gauge, and the outcome is translated as required for a mapped metric in the dataset.
+  checks:
+    quantity: ok
+    unit: ok
+    aggregation: ok
+    grouping: ok
+    series_count: ok
+    outcome: ok
+  method: haiku
+  cache: e103a7a62cb40edf
+- source_path: widgets[5].definition.requests[0]
+  verdict: pass
+  reasons:
+  - Datadog system.cpu.idle/system/iowait/user/stolen/guest are agent-computed CPU percentages, not a single OTel metric.
+  - The closest OTel metric, system.cpu.time (sum, seconds, per state), measures cumulative CPU time. A percent would need rate() divided by the core count and multiplied by 100, which is derived from other metrics and includes a constant not in the Datadog source.
+  - Blocking with MISSING_METRIC_MAPPING is the correct outcome under the hard rules. A proposed expression such as rate(system_cpu_time by state) / cores * 100 could go in notes.
+  - otel_metric_definitions is empty, so the metric definitions and label names could not be checked directly; the verdict relies on the known OTel hostmetrics definition of system.cpu.time.
   checks:
     quantity: n/a
     unit: n/a
@@ -162,7 +191,39 @@ results:
     series_count: n/a
     outcome: ok
   method: haiku
-  cache: 59e7a0c4cdaf8621
+  cache: 1937388c01d489ac
+- source_path: widgets[6].definition.requests[0]
+  verdict: block
+  reasons:
+  - Datadog system.cpu.iowait is a percent value per host, averaged across CPUs, and the max is taken over hosts. The candidate takes max over every per-CPU series, which yields the busiest single core rather than the host average, so the aggregation differs.
+  - 'Units differ: Datadog reports percent (0-100) while system.cpu.utilization is a ratio (unit ''1''). The x100 scale cannot be applied in promql, so this needs a note and a documented scale.'
+  - 'The series grain differs: the candidate works on per-cpu series, while Datadog works on per-host series. The label that would collapse them is cpu_logical_number, and it needs an avg by host step before the max.'
+  - The candidate's cpu_mode="wait" matcher is valid for the observed label cpu_mode. The template variable $scope has no prefix and default '*', so it is correctly dropped.
+  checks:
+    quantity: ok
+    unit: differs
+    aggregation: differs
+    grouping: differs
+    series_count: differs
+    outcome: differs
+  method: haiku
+  cache: ad7d3d98ef87ee6d
+- source_path: widgets[7].definition.requests[0]
+  verdict: nit
+  reasons:
+  - system.mem.total maps to system.memory.limit (sum, By), and the candidate's second formula sum(limit) - sum(available) reproduces query2 - query1 with the same unit and aggregation.
+  - system.mem.usable is mapped to system.linux.memory.available, which is Linux-only, so hosts on other OSes may yield different or missing series; this is a series-coverage caveat, not a quantity mismatch.
+  - system.linux.memory.available is defined but not in the dataset; that is still a valid translation.
+  - Datadog's $scope has no prefix and default '*', so dropping it to all series is correct; no grouping is applied on either side.
+  checks:
+    quantity: ok
+    unit: ok
+    aggregation: ok
+    grouping: ok
+    series_count: ok
+    outcome: ok
+  method: haiku
+  cache: f10147f3c21c62f3
 - source_path: widgets[8].definition.requests[0]
   verdict: pass
   reasons:

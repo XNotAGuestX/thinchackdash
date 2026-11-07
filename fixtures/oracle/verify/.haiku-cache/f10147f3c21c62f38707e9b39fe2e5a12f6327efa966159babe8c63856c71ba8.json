@@ -1,0 +1,21 @@
+{
+  "model": "claude-haiku-5-5",
+  "output": {
+    "checks": {
+      "aggregation": "ok",
+      "grouping": "ok",
+      "outcome": "ok",
+      "quantity": "ok",
+      "series_count": "ok",
+      "unit": "ok"
+    },
+    "reasons": [
+      "system.mem.total maps to system.memory.limit (sum, By), and the candidate's second formula sum(limit) - sum(available) reproduces query2 - query1 with the same unit and aggregation.",
+      "system.mem.usable is mapped to system.linux.memory.available, which is Linux-only, so hosts on other OSes may yield different or missing series; this is a series-coverage caveat, not a quantity mismatch.",
+      "system.linux.memory.available is defined but not in the dataset; that is still a valid translation.",
+      "Datadog's $scope has no prefix and default '*', so dropping it to all series is correct; no grouping is applied on either side."
+    ],
+    "verdict": "nit"
+  },
+  "system_sha256": "e0d8b72a4befbaa6388399933cfa793d987b2671eb1ddcc83e53b654c0a46971"
+}

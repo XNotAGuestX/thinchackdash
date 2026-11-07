@@ -1,0 +1,20 @@
+{
+  "model": "claude-haiku-5-5",
+  "output": {
+    "checks": {
+      "aggregation": "ok",
+      "grouping": "ok",
+      "outcome": "ok",
+      "quantity": "ok",
+      "series_count": "ok",
+      "unit": "differs"
+    },
+    "reasons": [
+      "Datadog system.io.util is a disk utilization percentage (0-100); system.disk.io_time is a monotonic sum of busy seconds, so avg(rate(...)) yields a 0-1 ratio. This is the same underlying quantity with a percent-vs-ratio unit scale of 100, which the converter must not apply in promql. Note the scale and link the OTel disk metric documentation in notes.",
+      "Aggregation (avg across devices/series) and the absence of grouping match the Datadog query, and $scope with default * is correctly dropped. rate() is valid because system.disk.io_time is a monotonic sum with otel_metric_type sum.",
+      "Outcome translated is correct since the metric exists in the dataset and no Datadog function is involved."
+    ],
+    "verdict": "nit"
+  },
+  "system_sha256": "e0d8b72a4befbaa6388399933cfa793d987b2671eb1ddcc83e53b654c0a46971"
+}

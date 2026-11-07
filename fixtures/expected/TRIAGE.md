@@ -17,7 +17,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 
 | Dashboard | Requests | red | yellow | unverified | green | Verifiers present |
 |---|---|---|---|---|---|---|
-| [`postgres/postgresql_dashboard`](#postgrespostgresql_dashboard) | 15 | 4 | 2 | 0 | 9 | lint (untrusted), haiku |
+| [`postgres/postgresql_dashboard`](#postgrespostgresql_dashboard) | 15 | 4 | 3 | 0 | 8 | lint (untrusted), haiku |
 | [`postgres/postgresql_screenboard_dashboard`](#postgrespostgresql_screenboard_dashboard) | 29 | 0 | 2 | 27 | 0 | lint (untrusted) |
 | [`nginx/NGINX-Metrics_dashboard`](#nginxnginx-metrics_dashboard) | 7 | 0 | 1 | 6 | 0 | lint (untrusted) |
 | [`nginx/NGINX-Overview_dashboard`](#nginxnginx-overview_dashboard) | 9 | 0 | 1 | 8 | 0 | lint (untrusted) |
@@ -26,7 +26,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 | [`docker_daemon/docker_dashboard`](#docker_daemondocker_dashboard) | 20 | 1 | 0 | 19 | 0 | lint (untrusted) |
 | [`kafka/kafka_dashboard`](#kafkakafka_dashboard) | 35 | 0 | 0 | 35 | 0 | lint (untrusted) |
 | [`kafka/kafka_kraft_dashboard`](#kafkakafka_kraft_dashboard) | 41 | 1 | 0 | 40 | 0 | lint (untrusted) |
-| **Total** | **207** | **6** | **11** | **181** | **9** | |
+| **Total** | **207** | **6** | **12** | **181** | **8** | |
 
 ## Verifier catch rates (known-bad mutations)
 
@@ -65,17 +65,17 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - Datadog: query1: `avg:postgresql.rows_inserted{$scope}`; formulas: `query1`
   - candidate: `avg(rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval]))`
 - **red** `widgets[3].definition.requests[0]` (timeseries: Disk utilization (%))
-  - signals: lint block (untrusted), haiku block
+  - signals: lint block (untrusted), haiku nit
   - lint: literal: constant 100 is not in the Datadog source
-  - haiku: The candidate multiplies by the constant 100, which is not in the Datadog source. Datadog system.io.util is a percent, while system.disk.io_time rate is a busy fraction (s/s, 0 to 1), so the units differ. Per the rules the scale must not b…; The underlying quantity matches: rate of system.disk.io_time (cumulative seconds busy, monotonic sum) is the busy fraction that system.io.util expresses as a percent. Aggregation avg() across devices and the unfiltered scope match the Data…; Grouping and series are consistent: no by-clause on either side, and the dropped $scope template variable (no prefix, default *) correctly yields all series.; The metric and labels used are valid in the dataset (system.disk.io_time is in_dataset with sum type), so no label rename is needed.; Correct output is translated with avg(rate(...[$__rate_interval])) without the 100 factor, with a notes entry explaining the percent vs ratio scale.
+  - haiku: Datadog system.io.util is a disk utilization percentage (0-100); system.disk.io_time is a monotonic sum of busy seconds, so avg(rate(...)) yields a 0-1 ratio. This is the same underlying quantity with a percent-vs-ratio unit scale of 100, …; Aggregation (avg across devices/series) and the absence of grouping match the Datadog query, and $scope with default * is correctly dropped. rate() is valid because system.disk.io_time is a monotonic sum with otel_metric_type sum.; Outcome translated is correct since the metric exists in the dataset and no Datadog function is involved.
   - Datadog: query1: `avg:system.io.util{$scope}`; formulas: `query1`
-  - candidate: `100 * avg(rate({otel_metric_name="system.disk.io_time", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg(rate({otel_metric_name="system.disk.io_time", otel_metric_type="sum"}[$__rate_interval]))`
 - **red** `widgets[6].definition.requests[0]` (timeseries: I/O wait (%))
   - signals: lint block (untrusted), haiku block
   - lint: literal: constant 100 is not in the Datadog source; aggregation: query1: nested aggregation `avg by (host_name)(rate({otel_metric_name="system.cpu.tim...` not in the source
-  - haiku: The PromQL applies a numeric constant (100) that is not in the Datadog source; the hard rules forbid this in promql. The percent-vs-ratio scale should be stated in notes with a documentation link, not applied.; The unit differs: Datadog system.cpu.iowait is reported in percent, while system.cpu.time is a cumulative sum in seconds, so the rate is a ratio before scaling.; Aggregation and grouping are plausible: max over per-host averages of the wait-mode rate matches an ungrouped max over per-host series. cpu_mode is an observed dataset label, so the matcher name is correct.; The host_name label is not in the observed dataset_labels for system.cpu.time, so its presence in the PromQL grouping could not be confirmed from the provided definitions.
+  - haiku: Datadog system.cpu.iowait is a percent value per host, averaged across CPUs, and the max is taken over hosts. The candidate takes max over every per-CPU series, which yields the busiest single core rather than the host average, so the aggr…; Units differ: Datadog reports percent (0-100) while system.cpu.utilization is a ratio (unit '1'). The x100 scale cannot be applied in promql, so this needs a note and a documented scale.; The series grain differs: the candidate works on per-cpu series, while Datadog works on per-host series. The label that would collapse them is cpu_logical_number, and it needs an avg by host step before the max.; The candidate's cpu_mode="wait" matcher is valid for the observed label cpu_mode. The template variable $scope has no prefix and default '*', so it is correctly dropped.
   - Datadog: query1: `max:system.cpu.iowait{$scope}`; formulas: `query1`
-  - candidate: `100 * max(avg by (host_name) (rate({otel_metric_name="system.cpu.time", otel_metric_type="sum", cpu_mode="wait"}[$__rate_interval])))`
+  - candidate: `max({otel_metric_name="system.cpu.utilization", otel_metric_type="gauge", cpu_mode="wait"})`
 - **yellow** `widgets[0].definition.requests[1]` (timeseries: Rows fetched / returned / inserted / updated (per sec))
   - signals: lint pass (untrusted), haiku nit
   - haiku: Same quantity: postgresql.tup_returned is the monotonic counter behind Datadog postgresql.rows_returned, and rate() yields per-second rows, matching the '(per sec)' widget.; Unit is compatible: the rate is rows per second in both.; Aggregation and grouping match: avg with no by-clause mirrors the Datadog avg over all series in scope.; Template variable $scope has no tag prefix and default *, so dropping it is correct.; Series grain caveat: OTel series are split per database, table, operation and source (observed labels postgresql_database_name and postgresql_table_name), so avg over them may differ from Datadog's per-database series. Averaging across tab…; Outcome translated is correct since an exact-enough mapping exists.
@@ -87,6 +87,11 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - haiku: Datadog postgresql.connections (the number of open connections per database) maps to OTel postgresql.backends, which measures the same quantity: the number of backends per database. Both are point-in-time counts, so no rate is needed and t…; Grouping by db maps to the observed dataset label postgresql_database_name, not the absent db_namespace, which is the required label name in this dataset.; avg by (...) matches the Datadog avg aggregation with by {db}. The $scope variable has no prefix and defaults to *, so it is correctly dropped.; The request is translated, and an exact translation exists, so the outcome is correct.
   - Datadog: query1: `avg:postgresql.connections{$scope} by {db}`; formulas: `query1`
   - candidate: `avg by (postgresql_database_name) ({otel_metric_name="postgresql.backends", otel_metric_type="sum"})`
+- **yellow** `widgets[7].definition.requests[0]` (timeseries: System memory)
+  - signals: lint pass (untrusted), haiku nit
+  - haiku: system.mem.total maps to system.memory.limit (sum, By), and the candidate's second formula sum(limit) - sum(available) reproduces query2 - query1 with the same unit and aggregation.; system.mem.usable is mapped to system.linux.memory.available, which is Linux-only, so hosts on other OSes may yield different or missing series; this is a series-coverage caveat, not a quantity mismatch.; system.linux.memory.available is defined but not in the dataset; that is still a valid translation.; Datadog's $scope has no prefix and default '*', so dropping it to all series is correct; no grouping is applied on either side.
+  - Datadog: query1: `sum:system.mem.usable{$scope}`; query2: `sum:system.mem.total{$scope}`; formulas: `query1`, `query2 - query1`
+  - candidate: `sum({otel_metric_name="system.linux.memory.available", otel_metric_type="sum"})`; `sum({otel_metric_name="system.memory.limit", otel_metric_type="sum"}) - sum({otel_metric_name="system.linux.memory.available", otel_metric_type="sum"})`
 - **green** `widgets[0].definition.requests[3]` (timeseries: Rows fetched / returned / inserted / updated (per sec))
   - signals: lint pass (untrusted), haiku pass
   - haiku: postgresql.tup_updated is a monotonic sum counting updated rows, matching the Datadog rows-updated quantity shown per second.; rate() over the monotonic sum yields the per-second rate, matching the '(per sec)' unit of the widget.; avg() with no by-clause matches Datadog avg: one series across all matching series.; $scope has no tag prefix and default '*', so it is correctly dropped.; Only dataset-observed label names are relevant and none are used in the selector, so no label-name issue arises.
@@ -94,28 +99,28 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - candidate: `avg(rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))`
 - **green** `widgets[2].definition.requests[0]` (timeseries: Inserts / updates / deletes (per sec))
   - signals: lint pass (untrusted), haiku pass
+  - haiku: postgresql.rows_inserted, rows_deleted and rows_updated map to postgresql.tup_inserted, tup_deleted and tup_updated, which are monotonic sums counting the same rows.; The per-second display is matched by rate() over the monotonic sums, with avg() aggregation and no grouping, consistent with the Datadog request.; The unprefixed $scope template variable with default * is correctly dropped, so no matcher is needed.; All three formulas are translated; no function appears in the Datadog request, so translating is the correct outcome.
   - Datadog: query1: `postgresql.rows_inserted{$scope}`; query2: `postgresql.rows_deleted{$scope}`; query3: `postgresql.rows_updated{$scope}`; formulas: `query1`, `query2`, `query3`
-  - candidate: blocked MISSING_AGGREGATOR
+  - candidate: `avg(rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval]))`; `avg(rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum"}[$__rate_interval]))`; `avg(rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))`
 - **green** `widgets[4].definition.requests[0]` (timeseries: System load)
   - signals: lint pass (untrusted), haiku pass
+  - haiku: system.load.1 is the 1-minute system load average; system.cpu.load_average.1m is the OpenTelemetry gauge for the same 1-minute load average, so the quantity matches.; Both are unitless load values (OTel unit {thread} is an annotation for the same count), so no scale is needed.; Datadog's default for an ungrouped query is a single average across hosts, which matches avg() with no by-clause.; The unprefixed $scope variable with default * is correctly dropped, so no matcher is needed.; The gauge is selected with otel_metric_type="gauge" and no rate() is applied, which is correct.; The translated outcome is correct because an exact mapping exists.
   - Datadog: query1: `system.load.1{$scope}`; formulas: `query1`
-  - candidate: blocked MISSING_AGGREGATOR
+  - candidate: `avg({otel_metric_name="system.cpu.load_average.1m", otel_metric_type="gauge"})`
 - **green** `widgets[4].definition.requests[1]` (timeseries: System load)
   - signals: lint pass (untrusted), haiku pass
+  - haiku: Datadog system.load.5 is the 5-minute system load average; system.cpu.load_average.5m is the same quantity as a gauge, so the metric mapping is correct.; Both are dimensionless load counts (the OTel {thread} unit is an annotation, not a scale difference), so no conversion is needed.; The Datadog query has no group-by, so the default cross-series avg matches the candidate's avg() with no grouping.; The $scope template variable has no prefix and default *, so dropping it is correct.; No Datadog function is involved and no rate() is applied to the gauge, so the translated outcome is correct.
   - Datadog: query1: `system.load.5{$scope}`; formulas: `query1`
-  - candidate: blocked MISSING_AGGREGATOR
+  - candidate: `avg({otel_metric_name="system.cpu.load_average.5m", otel_metric_type="gauge"})`
 - **green** `widgets[4].definition.requests[2]` (timeseries: System load)
   - signals: lint pass (untrusted), haiku pass
+  - haiku: system.load.15 is the 15-minute load average, which matches the OTel gauge system.cpu.load_average.15m (unit {thread}); same quantity.; The candidate uses avg() over the gauge with no grouping, matching the Datadog default aggregation across the unscoped series.; The unprefixed template variable $scope with default * is correctly dropped, so no matcher is added.; No rate() is applied to the gauge, and the outcome is translated as required for a mapped metric in the dataset.
   - Datadog: query1: `system.load.15{$scope}`; formulas: `query1`
-  - candidate: blocked MISSING_AGGREGATOR
+  - candidate: `avg({otel_metric_name="system.cpu.load_average.15m", otel_metric_type="gauge"})`
 - **green** `widgets[5].definition.requests[0]` (timeseries: CPU usage (%))
   - signals: lint pass (untrusted), haiku pass
+  - haiku: Datadog system.cpu.idle/system/iowait/user/stolen/guest are agent-computed CPU percentages, not a single OTel metric.; The closest OTel metric, system.cpu.time (sum, seconds, per state), measures cumulative CPU time. A percent would need rate() divided by the core count and multiplied by 100, which is derived from other metrics and includes a constant not …; Blocking with MISSING_METRIC_MAPPING is the correct outcome under the hard rules. A proposed expression such as rate(system_cpu_time by state) / cores * 100 could go in notes.; otel_metric_definitions is empty, so the metric definitions and label names could not be checked directly; the verdict relies on the known OTel hostmetrics definition of system.cpu.time.
   - Datadog: query1: `system.cpu.idle{$scope}`; query2: `system.cpu.system{$scope}`; query3: `system.cpu.iowait{$scope}`; query4: `system.cpu.user{$scope}`; query5: `system.cpu.stolen{$scope}`; query6: `system.cpu.guest{$scope}`; formulas: `query1`, `query2`, `query3`, `query4`, `query5`, `query6`
-  - candidate: blocked MISSING_AGGREGATOR
-- **green** `widgets[7].definition.requests[0]` (timeseries: System memory)
-  - signals: lint pass (untrusted), haiku pass
-  - haiku: system.mem.usable (available memory, including reclaimable cache) has no direct OpenTelemetry gauge equivalent; OTel system.memory.usage is split by state and would need a computed expression, so blocking with MISSING_METRIC_MAPPING is the…; The request is blocked, so quantity, unit, aggregation, grouping and series checks do not apply.; The otel_metric_definitions block is empty, so the candidate's omission cannot be checked against the catalog; the verdict rests on the known semantics of the metrics.; The $scope template variable has no prefix and default *, so dropping it is correct and does not affect the block decision.
-  - Datadog: query1: `sum:system.mem.usable{$scope}`; query2: `sum:system.mem.total{$scope}`; formulas: `query1`, `query2 - query1`
   - candidate: blocked MISSING_METRIC_MAPPING
 - **green** `widgets[8].definition.requests[0]` (timeseries: Network traffic (per sec))
   - signals: lint pass (untrusted), haiku pass
@@ -134,12 +139,12 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint nit (untrusted)
   - lint: formula: query1: function label_replace() not in the Datadog source
   - Datadog: query1: `avg:postgresql.live_rows{$scope,$table,$host} by {table}`; formulas: `query1`
-  - candidate: `avg by (postgresql_table_name) (label_replace({otel_metric_name="postgresql.rows", otel_metric_type="sum", state="live"}, "postgresql_table_name", "$1", "postgresql_table_name", "[^.]*[.](.*)"))`
+  - candidate: `avg by (postgresql_table_name) ({otel_metric_name="postgresql.rows", otel_metric_type="sum", state="live", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"})`
 - **yellow** `widgets[5].definition.widgets[1].definition.requests[0]` (toplist: Most connected databases)
   - signals: lint nit (untrusted)
   - lint: grain: query1: postgresql.backends has no dedup grain by (service_instance_id) (plan 05 Task 4)
   - Datadog: query1: `max:postgresql.connections{$scope,$db,$host} by {db}`; formulas: `query1`
-  - candidate: `max by (postgresql_database_name) ({otel_metric_name="postgresql.backends", otel_metric_type="sum"})`
+  - candidate: `max by (postgresql_database_name) ({otel_metric_name="postgresql.backends", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"})`
 - **unverified** `widgets[1].definition.widgets[0].definition.requests[0]` (query_value: Max connections in use)
   - signals: lint pass (untrusted)
   - Datadog: query1: `max:postgresql.percent_usage_connections{$scope,$host}`; formulas: `query1 * 100`
@@ -147,31 +152,31 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[1].definition.widgets[1].definition.requests[0]` (query_value: Rows fetched / returned)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.rows_fetched{$scope,$host}`; query2: `sum:postgresql.rows_returned{$scope,$host}`; formulas: `query1 / (query1 + query2) * 100`
-  - candidate: `sum(rate({otel_metric_name="postgresql.tup_fetched", otel_metric_type="sum"}[$__rate_interval])) / (sum(rate({otel_metric_name="postgresql.tup_fetched", otel_metric_type="sum"}[$__rate_interval])) + sum(rate({otel_metric_name="postgresql.tup_returned", otel_metric_type="sum"}[$__rate_interval]))) * 100`
+  - candidate: `sum(rate({otel_metric_name="postgresql.tup_fetched", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) / (sum(rate({otel_metric_name="postgresql.tup_fetched", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) + sum(rate({otel_metric_name="postgresql.tup_returned", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval]))) * 100`
 - **unverified** `widgets[2].definition.widgets[0].definition.requests[0]` (timeseries: Dead rows)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.dead_rows{$scope,$db,$table,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="postgresql.rows", otel_metric_type="sum", state="dead"})`
+  - candidate: `sum({otel_metric_name="postgresql.rows", otel_metric_type="sum", state="dead", postgresql_database_name=~"^($db)$", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"})`
 - **unverified** `widgets[2].definition.widgets[1].definition.requests[0]` (query_table: Resources by table)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.total_size{$scope,$db,$table,$host} by {table}`; query2: `avg:postgresql.index_scans{$scope,$db,$table,$host} by {table}`; query3: `avg:postgresql.live_rows{$scope,$db,$table,$host} by {table}`; query4: `avg:postgresql.dead_rows{$scope,$db,$table,$host} by {table}`; formulas: `query1`, `query2`, `query3`, `query4`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (postgresql_table_name) ({otel_metric_name="postgresql.table.size", otel_metric_type="sum", postgresql_database_name=~"^($db)$", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"})`; `avg by (postgresql_table_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum", postgresql_database_name=~"^($db)$", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"}[$__rate_interval]))`; `avg by (postgresql_table_name) ({otel_metric_name="postgresql.rows", otel_metric_type="sum", state="live", postgresql_database_name=~"^($db)$", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"})`; `avg by (postgresql_table_name) ({otel_metric_name="postgresql.rows", otel_metric_type="sum", state="dead", postgresql_database_name=~"^($db)$", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"})`
 - **unverified** `widgets[2].definition.widgets[2].definition.requests[0]` (timeseries: Temp bytes)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.temp_bytes{$scope,$db,$table,$host}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum(rate({otel_metric_name="postgresql.temp.io", otel_metric_type="sum", db_namespace=~"^($db)$", db_collection_name=~"^($table)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[2].definition.widgets[3].definition.requests[0]` (toplist: Most frequently scanned indexes)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.index_scans{$scope,$db,$host} by {index}`; formulas: `query1`
-  - candidate: `avg by (postgresql_index_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_index_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[2].definition.widgets[4].definition.requests[0]` (toplist: Least frequently scanned indexes)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.index_scans{$scope,$db,$host} by {index}`; formulas: `query1`
-  - candidate: `avg by (postgresql_index_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_index_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[2].definition.widgets[5].definition.requests[0]` (toplist: Tables with most disk usage (top 5))
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.total_size{$scope,$table,$host} by {table}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (postgresql_table_name) ({otel_metric_name="postgresql.table.size", otel_metric_type="sum", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"})`
 - **unverified** `widgets[3].definition.widgets[0].definition.requests[0]` (timeseries: Locks by lock mode)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.locks{$scope,$host} by {lock_mode,table}`; formulas: `top(query1, 5, 'mean', 'desc')`
@@ -179,7 +184,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[3].definition.widgets[1].definition.requests[0]` (toplist: Locks by lock mode)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.locks{$scope,$host} by {lock_mode,table}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum by (mode, relation) ({otel_metric_name="postgresql.database.locks", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[3].definition.widgets[2].definition.requests[0]` (timeseries: Deadlocks count)
   - signals: lint pass (untrusted)
   - Datadog: query1: `max:postgresql.deadlocks.count{$scope,$host} by {db}.as_count()`; formulas: `query1`
@@ -187,23 +192,23 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[4].definition.widgets[0].definition.requests[0]` (timeseries: Inserted)
   - signals: lint pass (untrusted)
   - Datadog: query3: `avg:postgresql.rows_inserted{$scope,$db,$host} by {db}`; formulas: `query3`
-  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[4].definition.widgets[1].definition.requests[0]` (timeseries: Updated)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.rows_updated{$scope,$db,$host} by {db}`; formulas: `query1`
-  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[4].definition.widgets[2].definition.requests[0]` (query_table: Actions)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.rows_inserted{$db,$scope,$host} by {db}`; query2: `avg:postgresql.rows_updated{$db,$scope,$host} by {db}`; query3: `avg:postgresql.rows_deleted{$db,$scope,$host} by {db}`; formulas: `query1`, `query2`, `query3`
-  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval]))`; `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))`; `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`; `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`; `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[4].definition.widgets[3].definition.requests[0]` (timeseries: Deleted)
   - signals: lint pass (untrusted)
   - Datadog: query2: `avg:postgresql.rows_deleted{$scope,$db,$host} by {db}`; formulas: `query2`
-  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[0]` (timeseries: Heap-only updates)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.rows_hot_updated{$scope,$db,$host} by {db}`; formulas: `query1`
-  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.operations", otel_metric_type="sum", operation="hot_upd"}[$__rate_interval]))`
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.operations", otel_metric_type="sum", operation="hot_upd", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[5].definition.widgets[0].definition.requests[0]` (timeseries: Connections per database)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.connections{$scope,$db,$host} by {db}.rollup(max)`; formulas: `query1`
@@ -211,19 +216,19 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[5].definition.widgets[0].definition.requests[1]` (timeseries: Connections per database)
   - signals: lint pass (untrusted)
   - Datadog: query1: `min:postgresql.max_connections{$scope,$db,$host} by {db}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `min by (postgresql_database_name) ({otel_metric_name="postgresql.connection.max", otel_metric_type="gauge", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"})`
 - **unverified** `widgets[6].definition.widgets[0].definition.requests[0]` (timeseries: Sequential scans vs index scans)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.index_scans{$scope,$db,$host} by {db}`; query2: `avg:postgresql.seq_scans{$scope,$db,$host} by {db}`; formulas: `query1`, `query2`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum", postgresql_database_name=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`; `avg by (db_namespace) (rate({otel_metric_name="postgresql.sequential_scans", otel_metric_type="sum", db_namespace=~"^($db)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[6].definition.widgets[1].definition.requests[0]` (query_table: Top table scans)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.index_scans{$scope,$db,$table,$host} by {db}`; query2: `avg:postgresql.seq_scans{$scope,$db,$table,$host} by {db}`; formulas: `query1`, `query2`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (postgresql_database_name) (rate({otel_metric_name="postgresql.index.scans", otel_metric_type="sum", postgresql_database_name=~"^($db)$", postgresql_table_name=~"^($table)$", host_name=~"^($host)$"}[$__rate_interval]))`; `avg by (db_namespace) (rate({otel_metric_name="postgresql.sequential_scans", otel_metric_type="sum", db_namespace=~"^($db)$", db_collection_name=~"^($table)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[6].definition.widgets[2].definition.requests[0]` (timeseries: Sequential scans vs. week before)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.seq_scans{$scope,$db,$table,$host}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum(rate({otel_metric_name="postgresql.sequential_scans", otel_metric_type="sum", db_namespace=~"^($db)$", db_collection_name=~"^($table)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[6].definition.widgets[2].definition.requests[1]` (timeseries: Sequential scans vs. week before)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.seq_scans{$scope,$db,$table,$host}`; formulas: `week_before(query1)`
@@ -231,7 +236,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[6].definition.widgets[3].definition.requests[0]` (toplist: Top function calls)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:postgresql.function.calls{$scope,$db,$table,$host} by {function}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (function) (rate({otel_metric_name="postgresql.function.calls", otel_metric_type="sum", db_namespace=~"^($db)$", db_collection_name=~"^($table)$", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[7].definition.widgets[0].definition.requests[0]` (timeseries: Number of hosts with replication delay)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:postgresql.replication_delay_bytes{$scope,$host} by {host}`; formulas: `count_nonzero(query1)`
@@ -255,7 +260,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint nit (untrusted)
   - lint: aggregation: q: derived from 2 aggregations `sum(rate({otel_metric_name="nginx.connections_accepted",otel_metric...`, not a 1:1 metric
   - Datadog: q: `sum:nginx.net.conn_dropped_per_s{$scope}`
-  - candidate: `sum(rate({otel_metric_name="nginx.connections_accepted", otel_metric_type="sum"}[$__rate_interval])) - sum(rate({otel_metric_name="nginx.connections_handled", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: blocked MISSING_METRIC_MAPPING
 - **unverified** `widgets[1].definition.requests[0]` (timeseries: 5xx per second (only available for NGINX Plus))
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:nginx.server_zone.responses.5xx{$scope}`
@@ -287,7 +292,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint nit (untrusted)
   - lint: aggregation: query1: derived from 2 aggregations `sum(rate({otel_metric_name="nginx.connections_accepted",otel_metric...`, not a 1:1 metric
   - Datadog: query1: `sum:nginx.net.conn_dropped_per_s{$Host}`; formulas: `query1`
-  - candidate: `sum(rate({otel_metric_name="nginx.connections_accepted", otel_metric_type="sum"}[$__rate_interval])) - sum(rate({otel_metric_name="nginx.connections_handled", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: blocked MISSING_METRIC_MAPPING
 - **unverified** `widgets[1].definition.widgets[0].definition.requests[0]` (query_value: Dropped connections, last 15m)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:nginx.net.conn_dropped_per_s{*}.as_count()`
@@ -303,23 +308,23 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[0]` (timeseries: Requests: reading, writing, waiting)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:nginx.net.reading{$Host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="reading"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="reading", host_name=~"^($Host)$"})`
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[1]` (timeseries: Requests: reading, writing, waiting)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:nginx.net.writing{$Host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="writing"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="writing", host_name=~"^($Host)$"})`
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[2]` (timeseries: Requests: reading, writing, waiting)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:nginx.net.waiting{$Host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting", host_name=~"^($Host)$"})`
 - **unverified** `widgets[4].definition.widgets[5].definition.requests[0]` (change: Change in overall requests per second)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:nginx.net.request_per_s{*} by {service}`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum by (service_name) (rate({otel_metric_name="nginx.requests", otel_metric_type="sum"}[$__rate_interval]))`
 - **unverified** `widgets[5].definition.widgets[1].definition.requests[0]` (timeseries: Active connections per second)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:nginx.net.connections{$Host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="active"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="active", host_name=~"^($Host)$"})`
 
 ## nginx/plus_overview
 
@@ -327,26 +332,26 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint nit (untrusted)
   - lint: rate: monotonic counter nginx.connections_accepted selected without rate()/increase()
   - Datadog: q: `sum:nginx.connections.accepted{$host}`
-  - candidate: `sum({otel_metric_name="nginx.connections_accepted", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_accepted", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **yellow** `widgets[1].definition.widgets[2].definition.requests[0]` (query_value: Active connections)
   - signals: lint nit (untrusted)
   - lint: aggregation: q: derived from 2 aggregations `sum({otel_metric_name="nginx.connections_current",otel_metric_type=...`, not a 1:1 metric
   - Datadog: q: `sum:nginx.connections.active{$host}`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="active"}) - sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state=~"reading|writing", host_name=~"^($host)$"})`
 - **yellow** `widgets[1].definition.widgets[5].definition.requests[0]` (query_value: Total requests)
   - signals: lint nit (untrusted)
   - lint: rate: monotonic counter nginx.requests selected without rate()/increase()
   - Datadog: q: `sum:nginx.requests.total{$host}`
-  - candidate: `sum({otel_metric_name="nginx.requests", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="nginx.requests", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **yellow** `widgets[6].definition.widgets[0].definition.requests[0]` (timeseries: Current connections (idle & active))
   - signals: lint nit (untrusted)
   - lint: aggregation: promql[0] query1: derived from 2 aggregations `sum({otel_metric_name="nginx.connections_current",otel_metric_type=...`, not a 1:1 metric
   - Datadog: query1: `sum:nginx.connections.active{$host}`; query2: `sum:nginx.connections.idle{$host}`; formulas: `query1`, `query2`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="active"}) - sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting"})`; `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state=~"reading|writing", host_name=~"^($host)$"})`; `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting", host_name=~"^($host)$"})`
 - **unverified** `widgets[1].definition.widgets[3].definition.requests[0]` (query_value: Idle/waiting connections)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:nginx.connections.idle{$host}`
-  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting"})`
+  - candidate: `sum({otel_metric_name="nginx.connections_current", otel_metric_type="sum", state="waiting", host_name=~"^($host)$"})`
 - **unverified** `widgets[1].definition.widgets[4].definition.requests[0]` (query_value: Dropped connections)
   - signals: lint pass (untrusted)
   - Datadog: q: `per_second(sum:nginx.connections.dropped{$host})`
@@ -422,23 +427,23 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint nit (untrusted)
   - lint: rate: monotonic counter redis.keys.expired selected without rate()/increase()
   - Datadog: query1: `sum:redis.keys.expired{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.keys.expired", otel_metric_type="sum"})`
+  - candidate: `sum(rate({otel_metric_name="redis.keys.expired", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[1].definition.widgets[0].definition.requests[0]` (query_value: Hit rate)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.stats.keyspace_hits{$scope,$host}`; query2: `avg:redis.stats.keyspace_misses{$scope,$host}`; formulas: `(query1 / (query1 + query2)) * 100`
-  - candidate: `(avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum"}[$__rate_interval])) / (avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum"}[$__rate_interval])) + avg(rate({otel_metric_name="redis.keyspace.misses", otel_metric_type="sum"}[$__rate_interval])))) * 100`
+  - candidate: `(avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) / (avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) + avg(rate({otel_metric_name="redis.keyspace.misses", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])))) * 100`
 - **unverified** `widgets[1].definition.widgets[1].definition.requests[0]` (query_value: Blocked clients)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.clients.blocked{$scope,$host}`
-  - candidate: `sum({otel_metric_name="redis.clients.blocked", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="redis.clients.blocked", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **unverified** `widgets[1].definition.widgets[2].definition.requests[0]` (query_value: Redis keyspace)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.keys{$scope,$host}`
-  - candidate: `sum({otel_metric_name="redis.db.keys", otel_metric_type="gauge"})`
+  - candidate: `sum({otel_metric_name="redis.db.keys", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[1].definition.widgets[3].definition.requests[0]` (query_value: Unsaved changes)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.rdb.changes_since_last{$scope,$host}`
-  - candidate: `sum({otel_metric_name="redis.rdb.changes_since_last_save", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="redis.rdb.changes_since_last_save", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **unverified** `widgets[1].definition.widgets[4].definition.requests[0]` (query_value: Primary link down)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.replication.master_link_down_since_seconds{$scope,$host}`
@@ -462,19 +467,19 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[2].definition.widgets[5].definition.requests[0]` (timeseries: Average CPU usage)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.cpu.sys{$host,$scope}`; query2: `avg:redis.cpu.user{$host,$scope}`; formulas: `query1`, `query2`
-  - candidate: `avg(rate({otel_metric_name="redis.cpu.time", otel_metric_type="sum", state="sys"}[$__rate_interval]))`; `avg(rate({otel_metric_name="redis.cpu.time", otel_metric_type="sum", state="user"}[$__rate_interval]))`
+  - candidate: `avg(rate({otel_metric_name="redis.cpu.time", otel_metric_type="sum", host_name=~"^($host)$", state="sys"}[$__rate_interval]))`; `avg(rate({otel_metric_name="redis.cpu.time", otel_metric_type="sum", host_name=~"^($host)$", state="user"}[$__rate_interval]))`
 - **unverified** `widgets[2].definition.widgets[6].definition.requests[0]` (query_value: Cache hit rate)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.stats.keyspace_hits{$scope,$host}`; query2: `avg:redis.stats.keyspace_misses{$scope,$host}`; formulas: `(query1 / (query1 + query2)) * 100`
-  - candidate: `(avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum"}[$__rate_interval])) / (avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum"}[$__rate_interval])) + avg(rate({otel_metric_name="redis.keyspace.misses", otel_metric_type="sum"}[$__rate_interval])))) * 100`
+  - candidate: `(avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) / (avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) + avg(rate({otel_metric_name="redis.keyspace.misses", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])))) * 100`
 - **unverified** `widgets[2].definition.widgets[7].definition.requests[0]` (timeseries: Cache hit rate)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.stats.keyspace_hits{$scope,$host}`; query2: `avg:redis.stats.keyspace_misses{$scope,$host}`; formulas: `(query1 / (query1 + query2)) * 100`
-  - candidate: `(avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum"}[$__rate_interval])) / (avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum"}[$__rate_interval])) + avg(rate({otel_metric_name="redis.keyspace.misses", otel_metric_type="sum"}[$__rate_interval])))) * 100`
+  - candidate: `(avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) / (avg(rate({otel_metric_name="redis.keyspace.hits", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])) + avg(rate({otel_metric_name="redis.keyspace.misses", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval])))) * 100`
 - **unverified** `widgets[3].definition.widgets[0].definition.requests[0]` (timeseries: Percent Used Memory by Host)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.mem.used{$scope,$host} by {host}`; query2: `max:redis.mem.maxmemory{$scope,$host} by {host}`; formulas: `(query1 / query2) * 100`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `(avg by (host_name) ({otel_metric_name="redis.memory.used", otel_metric_type="gauge", host_name=~"^($host)$"}) / max by (host_name) ({otel_metric_name="redis.maxmemory", otel_metric_type="gauge", host_name=~"^($host)$"})) * 100`
 - **unverified** `widgets[3].definition.widgets[2].definition.requests[0]` (timeseries: Evictions)
   - signals: lint pass (untrusted)
   - Datadog: query2: `sum:redis.keys.evicted{$scope,$host} by {host}`; formulas: `per_minute(query2)`
@@ -482,27 +487,27 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[3].definition.widgets[3].definition.requests[0]` (timeseries: Total allocated memory)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.mem.rss{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.memory.rss", otel_metric_type="gauge"})`
+  - candidate: `sum({otel_metric_name="redis.memory.rss", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[3].definition.widgets[4].definition.requests[0]` (query_value: Fragmentation ratio)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.mem.fragmentation_ratio{$scope,$host}`
-  - candidate: `avg({otel_metric_name="redis.memory.fragmentation_ratio", otel_metric_type="gauge"})`
+  - candidate: `avg({otel_metric_name="redis.memory.fragmentation_ratio", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[3].definition.widgets[5].definition.requests[0]` (timeseries: Fragmentation ratio)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:redis.mem.fragmentation_ratio{$scope,$host}`; formulas: `query1`
-  - candidate: `avg({otel_metric_name="redis.memory.fragmentation_ratio", otel_metric_type="gauge"})`
+  - candidate: `avg({otel_metric_name="redis.memory.fragmentation_ratio", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[4].definition.widgets[0].definition.requests[0]` (timeseries: Connected clients)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.net.clients{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.clients.connected", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="redis.clients.connected", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **unverified** `widgets[4].definition.widgets[2].definition.requests[0]` (timeseries: Blocked clients)
   - signals: lint pass (untrusted)
   - Datadog: query2: `sum:redis.clients.blocked{$scope,$host}`; formulas: `query2`
-  - candidate: `sum({otel_metric_name="redis.clients.blocked", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="redis.clients.blocked", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **unverified** `widgets[4].definition.widgets[3].definition.requests[0]` (timeseries: Connected replicas)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.net.slaves{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.slaves.connected", otel_metric_type="sum"})`
+  - candidate: `sum({otel_metric_name="redis.slaves.connected", otel_metric_type="sum", host_name=~"^($host)$"})`
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[0]` (timeseries: Rejected connections)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.net.rejected{$scope,$host}`; formulas: `diff(query1)`
@@ -510,19 +515,19 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[4].definition.widgets[5].definition.requests[0]` (query_value: Commands per second)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.net.commands{$scope,$host}`; formulas: `query1`
-  - candidate: `sum(rate({otel_metric_name="redis.commands.processed", otel_metric_type="sum"}[$__rate_interval]))`
+  - candidate: `sum(rate({otel_metric_name="redis.commands.processed", otel_metric_type="sum", host_name=~"^($host)$"}[$__rate_interval]))`
 - **unverified** `widgets[5].definition.widgets[0].definition.requests[0]` (timeseries: Total keys)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.keys{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.db.keys", otel_metric_type="gauge"})`
+  - candidate: `sum({otel_metric_name="redis.db.keys", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[5].definition.widgets[1].definition.requests[0]` (query_value: Current total)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.keys{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.db.keys", otel_metric_type="gauge"})`
+  - candidate: `sum({otel_metric_name="redis.db.keys", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[5].definition.widgets[4].definition.requests[0]` (query_value: Keys with expiration)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.expires{$scope,$host}`; formulas: `query1`
-  - candidate: `sum({otel_metric_name="redis.db.expires", otel_metric_type="gauge"})`
+  - candidate: `sum({otel_metric_name="redis.db.expires", otel_metric_type="gauge", host_name=~"^($host)$"})`
 - **unverified** `widgets[5].definition.widgets[5].definition.requests[0]` (distribution: Key length distribution)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:redis.key.length{$scope, $host, $key} by {key}`; formulas: `query1`
@@ -542,7 +547,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint block (untrusted)
   - lint: literal: constant 1e+07 is not in the Datadog source
   - Datadog: q: `avg:docker.cpu.user{$scope} by {container_name}`
-  - candidate: `avg by (container_name) (rate({otel_metric_name="container.cpu.usage.usermode", otel_metric_type="sum"}[$__rate_interval])) / 1e7`
+  - candidate: `avg by (container_name) (rate({otel_metric_name="container.cpu.usage.usermode", otel_metric_type="sum"}[$__rate_interval]))`
 - **unverified** `widgets[0].definition.requests[0]` (timeseries: Running containers by image)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:docker.containers.running{$scope} by {docker_image}.fill(0)`
@@ -558,11 +563,11 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[3].definition.requests[0]` (heatmap: Memory by container)
   - signals: lint pass (untrusted)
   - Datadog: q: `avg:docker.mem.rss{$scope} by {container_name}`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (container_name) ({otel_metric_name="container.memory.anon", otel_metric_type="sum"})`
 - **unverified** `widgets[4].definition.requests[0]` (query_value: Running containers)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:docker.containers.running{$scope}`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum({otel_metric_name="container.state.status", otel_metric_type="sum", container_state_status="running"})`
 - **unverified** `widgets[5].definition.requests[0]` (query_value: Stopped containers)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:docker.containers.stopped{$scope}`
@@ -586,7 +591,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[14].definition.requests[0]` (timeseries: Cache memory by image)
   - signals: lint pass (untrusted)
   - Datadog: q: `sum:docker.mem.cache{$scope} by {docker_image}`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum by (container_image_name) ({otel_metric_name="container.memory.file", otel_metric_type="sum"})`
 - **unverified** `widgets[18].definition.requests[0]` (timeseries: Swap by image)
   - signals: lint pass (untrusted)
   - Datadog: q: `avg:docker.mem.swap{$scope} by {docker_image}`
@@ -641,23 +646,23 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[3].definition.widgets[2].definition.requests[0]` (query_value: ISR Delta)
   - signals: lint pass (untrusted)
   - Datadog: query1: `max:kafka.replication.isr_expands.rate{$env}`; query2: `max:kafka.replication.isr_shrinks.rate{$env}`; formulas: `query1 - query2`
-  - candidate: `max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="expand"}[$__rate_interval])) - max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="shrink"}[$__rate_interval]))`
+  - candidate: `max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="expand", deployment_environment_name=~"^($env)$"}[$__rate_interval])) - max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="shrink", deployment_environment_name=~"^($env)$"}[$__rate_interval]))`
 - **unverified** `widgets[3].definition.widgets[3].definition.requests[0]` (query_value: Follower Fetch Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.fetch_follower.time.avg{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="FetchFollower", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[3].definition.widgets[4].definition.requests[0]` (query_value: Consumer Fetch Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.fetch_consumer.time.avg{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="FetchConsumer", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[3].definition.widgets[5].definition.requests[0]` (query_value: Produce Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.produce.time.avg{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="Produce", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[4].definition.widgets[1].definition.requests[0]` (timeseries: Clean and Unclean Leader Elections)
   - signals: lint pass (untrusted)
   - Datadog: query2: `avg:kafka.replication.leader_elections.rate{$env}`; query1: `avg:kafka.replication.unclean_leader_elections.rate{$env}`; formulas: `query2`, `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg(rate({otel_metric_name="kafka.leader.election.rate", otel_metric_type="sum", deployment_environment_name=~"^($env)$"}[$__rate_interval]))`; `avg(rate({otel_metric_name="kafka.leaderElection.unclean.count", otel_metric_type="sum", deployment_environment_name=~"^($env)$"}[$__rate_interval]))`
 - **unverified** `widgets[4].definition.widgets[2].definition.requests[0]` (timeseries: Broker Network Throughput)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:kafka.net.bytes_in.rate{$env} by {env}.weighted()`; query2: `sum:kafka.net.bytes_out.rate{$env} by {env}.weighted()`; formulas: `query1`, `query2`
@@ -669,7 +674,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[0]` (timeseries: Request Times)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.produce.time.avg{$env} by {env}`; query2: `avg:kafka.request.fetch_consumer.time.avg{$env} by {env}`; formulas: `query1`, `query2`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (deployment_environment_name) ({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="Produce", deployment_environment_name=~"^($env)$"})`; `avg by (deployment_environment_name) ({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="FetchConsumer", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[5].definition.widgets[1].definition.requests[0]` (timeseries: Bytes Out by Topic)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:kafka.producer.bytes_out{$env} by {topic,env}.weighted()`; formulas: `query1`
@@ -689,7 +694,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[6].definition.widgets[1].definition.requests[0]` (timeseries: Consumer Lag by Group)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:kafka.consumer_lag{$env,$consumer_group} by {host,consumer_group,env}`; query2: `sum:kafka.consumer_offset{$env,$consumer_group} by {host,consumer_group,env}`; formulas: `query1`, `query2`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum by (host_name, group, deployment_environment_name) ({otel_metric_name="kafka.consumer_group.lag", otel_metric_type="gauge", deployment_environment_name=~"^($env)$", group=~"^($consumer_group)$"})`; `sum by (host_name, group, deployment_environment_name) ({otel_metric_name="kafka.consumer_group.offset", otel_metric_type="gauge", deployment_environment_name=~"^($env)$", group=~"^($consumer_group)$"})`
 - **unverified** `widgets[6].definition.widgets[2].definition.requests[0]` (timeseries: Bytes Consumed)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:kafka.consumer.bytes_in{$env,$consumer_group} by {consumer_group,env}.weighted()`; formulas: `query1`
@@ -725,23 +730,23 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[8].definition.widgets[1].definition.requests[0]` (timeseries: ZK File Descriptors)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:zookeeper.max_file_descriptor_count{$env} by {host}`; query2: `avg:zookeeper.open_file_descriptor_count{$env} by {host}`; formulas: `query1`, `query2`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (host_name) ({otel_metric_name="zookeeper.file_descriptor.limit", otel_metric_type="gauge", deployment_environment_name=~"^($env)$"})`; `avg by (host_name) ({otel_metric_name="zookeeper.file_descriptor.open", otel_metric_type="sum", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[8].definition.widgets[2].definition.requests[0]` (heatmap: Active Connections)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:zookeeper.connections{$env} by {service,host}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum by (service_name, host_name) ({otel_metric_name="zookeeper.connection.active", otel_metric_type="sum", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[8].definition.widgets[3].definition.requests[0]` (timeseries: Pending Syncs (Leader))
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:zookeeper.pending_syncs{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum({otel_metric_name="zookeeper.sync.pending", otel_metric_type="sum", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[8].definition.widgets[4].definition.requests[0]` (timeseries: Average Request Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:zookeeper.avg_latency{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum({otel_metric_name="zookeeper.latency.avg", otel_metric_type="gauge", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[8].definition.widgets[5].definition.requests[0]` (heatmap: Outstanding Requests)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:zookeeper.outstanding_requests{$env} by {host}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `sum by (host_name) ({otel_metric_name="zookeeper.request.active", otel_metric_type="sum", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[8].definition.widgets[6].definition.requests[0]` (timeseries: Number of Commits (Leader))
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:zookeeper.commit_count{$env,$consumer_group}`; formulas: `query1`
@@ -769,7 +774,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
   - signals: lint block (untrusted)
   - lint: grouping: promql[0] query1: Datadog by {host,consumer_group,env}, PromQL by (host_name, group); answer labels: host->host_name, consumer_group->group, env->None; grouping: promql[1] query2: Datadog by {host,consumer_group,env}, PromQL by (host_name, group); answer labels: host->host_name, consumer_group->group, env->None
   - Datadog: query1: `sum:kafka.consumer_lag{$env,$consumer_group} by {host,consumer_group,env}`; query2: `sum:kafka.consumer_offset{$env,$consumer_group} by {host,consumer_group,env}`; formulas: `query1`, `query2`
-  - candidate: `sum by (host_name, group) ({otel_metric_name="kafka.consumer_group.lag", otel_metric_type="gauge"})`; `sum by (host_name, group) ({otel_metric_name="kafka.consumer_group.offset", otel_metric_type="gauge"})`
+  - candidate: `sum by (host_name, group, deployment_environment_name) ({otel_metric_name="kafka.consumer_group.lag", otel_metric_type="gauge", deployment_environment_name=~"^($env)$", group=~"^($consumer_group)$"})`; `sum by (host_name, group, deployment_environment_name) ({otel_metric_name="kafka.consumer_group.offset", otel_metric_type="gauge", deployment_environment_name=~"^($env)$", group=~"^($consumer_group)$"})`
 - **unverified** `widgets[2].definition.widgets[1].definition.requests[0]` (topology_map: Kafka Topology for $topic, $env)
   - signals: lint pass (untrusted)
   - Datadog: none (not a metrics request)
@@ -789,23 +794,23 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[3].definition.widgets[2].definition.requests[0]` (query_value: ISR Delta)
   - signals: lint pass (untrusted)
   - Datadog: query1: `max:kafka.replication.isr_expands.rate{$env}`; query2: `max:kafka.replication.isr_shrinks.rate{$env}`; formulas: `query1 - query2`
-  - candidate: `max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="expand"}[$__rate_interval])) - max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="shrink"}[$__rate_interval]))`
+  - candidate: `max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="expand", deployment_environment_name=~"^($env)$"}[$__rate_interval])) - max(rate({otel_metric_name="kafka.isr.operation.count", otel_metric_type="sum", operation="shrink", deployment_environment_name=~"^($env)$"}[$__rate_interval]))`
 - **unverified** `widgets[3].definition.widgets[3].definition.requests[0]` (query_value: Follower Fetch Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.fetch_follower.time.avg{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="FetchFollower", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[3].definition.widgets[4].definition.requests[0]` (query_value: Consumer Fetch Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.fetch_consumer.time.avg{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="FetchConsumer", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[3].definition.widgets[5].definition.requests[0]` (query_value: Produce Latency)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.produce.time.avg{$env}`; formulas: `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="Produce", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[4].definition.widgets[1].definition.requests[0]` (timeseries: Clean and Unclean Leader Elections)
   - signals: lint pass (untrusted)
   - Datadog: query2: `avg:kafka.replication.leader_elections.rate{$env}`; query1: `avg:kafka.replication.unclean_leader_elections.rate{$env}`; formulas: `query2`, `query1`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg(rate({otel_metric_name="kafka.leader.election.rate", otel_metric_type="sum", deployment_environment_name=~"^($env)$"}[$__rate_interval]))`; `avg(rate({otel_metric_name="kafka.leaderElection.unclean.count", otel_metric_type="sum", deployment_environment_name=~"^($env)$"}[$__rate_interval]))`
 - **unverified** `widgets[4].definition.widgets[2].definition.requests[0]` (timeseries: Broker Network Throughput)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:kafka.net.bytes_in.rate{$env} by {env}.weighted()`; query2: `sum:kafka.net.bytes_out.rate{$env} by {env}.weighted()`; formulas: `query1`, `query2`
@@ -817,7 +822,7 @@ errors, not that its findings are wrong), but its pass is not evidence for green
 - **unverified** `widgets[4].definition.widgets[4].definition.requests[0]` (timeseries: Request Times)
   - signals: lint pass (untrusted)
   - Datadog: query1: `avg:kafka.request.produce.time.avg{$env} by {env}`; query2: `avg:kafka.request.fetch_consumer.time.avg{$env} by {env}`; formulas: `query1`, `query2`
-  - candidate: blocked MISSING_METRIC_MAPPING
+  - candidate: `avg by (deployment_environment_name) ({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="Produce", deployment_environment_name=~"^($env)$"})`; `avg by (deployment_environment_name) ({otel_metric_name="kafka.request.time.avg", otel_metric_type="gauge", type="FetchConsumer", deployment_environment_name=~"^($env)$"})`
 - **unverified** `widgets[5].definition.widgets[1].definition.requests[0]` (timeseries: Bytes Out by Topic)
   - signals: lint pass (untrusted)
   - Datadog: query1: `sum:kafka.producer.bytes_out{$env} by {topic,env}.weighted()`; formulas: `query1`

@@ -4,18 +4,15 @@ Check order (the first blocking failure returns ``CompiledError`` with the warni
 collected so far plus that error):
 
 1. any query function            -> UNSUPPORTED_QUERY_FUNCTION
-2. no space aggregator           -> MISSING_AGGREGATOR
-3. metric not in the mapping     -> MISSING_METRIC_MAPPING
-4. entry not reviewed            -> UNREVIEWED_MAPPING (warning, continue)
-5. filters, in source order      -> UNSUPPORTED_TEMPLATE_VARIABLE / TEMPLATE_VARIABLE_DROPPED
+2. metric not in the mapping     -> MISSING_METRIC_MAPPING
+3. entry not reviewed            -> UNREVIEWED_MAPPING (warning, continue)
+4. filters, in source order      -> UNSUPPORTED_TEMPLATE_VARIABLE / TEMPLATE_VARIABLE_DROPPED
                                     (warning) / MISSING_LABEL_MAPPING
-6. group-by tags                 -> MISSING_LABEL_MAPPING
+5. group-by tags                 -> MISSING_LABEL_MAPPING
 
-Plan 05 Task 1 (documented default aggregator) is deliberately not implemented: the
-Datadog docs state no default space aggregator for the query syntax (checked
-2026-11-07 on https://docs.datadoghq.com/metrics/ and
-https://docs.datadoghq.com/dashboards/querying/; the only "defaults to avg by" refers
-to the graph editor's dropdown). So a missing aggregator stays a blocking error.
+A query without a space aggregator (`system.load.1{*}`) uses Datadog's default, `avg`
+(plan 05 Task 1): the Metrics Explorer and the dashboard editor both default to `avg`
+(https://docs.datadoghq.com/metrics/explorer/, https://docs.datadoghq.com/dashboards/querying/).
 """
 
 from __future__ import annotations
@@ -41,6 +38,7 @@ from migrator.source.datadog.model import MetricQuery, TagFilter
 from migrator.target import Diagnostic, DiagnosticCode, Severity
 
 RATE_INTERVAL = "$__rate_interval"
+DEFAULT_AGGREGATOR = "avg"  # Datadog's space aggregation without an `agg:` prefix
 
 
 @dataclass(frozen=True)
@@ -112,12 +110,7 @@ def compile_metric_query(
             f"Query function '.{name}()' is not supported.",
             "Remove the function from the source query or migrate this widget manually.",
         )
-    if q.aggregator is None:
-        return d.block(
-            "MISSING_AGGREGATOR",
-            "Query has no space aggregator.",
-            "Add an explicit space aggregator (avg, sum, min or max) to the source query.",
-        )
+    aggregator = q.aggregator or DEFAULT_AGGREGATOR
     entry = mapping.metrics.get(q.metric)
     if entry is None:
         return d.block(
@@ -212,9 +205,9 @@ def compile_metric_query(
     if isinstance(entry, ExpressionMapping):
         filters = ", " + render_matchers(matchers) if matchers else ""
         body = entry.expression.replace("$filters", filters)
-        expr = render_aggregation(q.aggregator, group_labels, body)
+        expr = render_aggregation(aggregator, group_labels, body)
     else:
-        expr = _render_metric(entry, q.aggregator, group_labels, matchers)
+        expr = _render_metric(entry, aggregator, group_labels, matchers)
 
     if entry.scale != 1:
         expr = f"({expr}) * {format_number(entry.scale)}"

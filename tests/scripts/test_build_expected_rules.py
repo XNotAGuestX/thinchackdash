@@ -33,7 +33,7 @@ def request(*queries: str, formulas: list[str] | None = None, logs: bool = False
         ("count:x{*}", "UNSUPPORTED_QUERY_SYNTAX"),
         ("p95:x{*} by {topic}", "UNSUPPORTED_QUERY_SYNTAX"),
         ("sum:x{*}.rollup(max)", "UNSUPPORTED_QUERY_FUNCTION"),
-        ("x.y{$scope}", "MISSING_AGGREGATOR"),  # #85 has no default aggregator
+        ("x.y{$scope}", None),  # no space aggregator: Datadog's default avg
         ("avg:x{$nope}", "UNSUPPORTED_TEMPLATE_VARIABLE"),
         ("avg:x{$env}", "UNSUPPORTED_TEMPLATE_VARIABLE"),  # default other than '*'
         ("avg:x{$scope,$host} by {host}", None),  # only a mapping lookup can block it
@@ -54,8 +54,8 @@ def test_only_queries_referenced_by_a_formula_are_checked() -> None:
 
 
 def test_rule_errors_collect_one_code_per_offending_query() -> None:
-    req = request("x.y{*}", "sum:z{*}.as_count()")
-    assert be.rule_errors(req, VARS) == ["MISSING_AGGREGATOR", "UNSUPPORTED_QUERY_FUNCTION"]
+    req = request("avg:x.y{$nope}", "sum:z{*}.as_count()")
+    assert be.rule_errors(req, VARS) == ["UNSUPPORTED_QUERY_FUNCTION", "UNSUPPORTED_TEMPLATE_VARIABLE"]
 
 
 def test_only_unprefixed_variables_are_dropped() -> None:

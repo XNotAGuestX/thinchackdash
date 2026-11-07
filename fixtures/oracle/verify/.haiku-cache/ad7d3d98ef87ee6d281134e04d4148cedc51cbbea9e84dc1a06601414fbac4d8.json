@@ -1,0 +1,21 @@
+{
+  "model": "claude-haiku-5-5",
+  "output": {
+    "checks": {
+      "aggregation": "differs",
+      "grouping": "differs",
+      "outcome": "differs",
+      "quantity": "ok",
+      "series_count": "differs",
+      "unit": "differs"
+    },
+    "reasons": [
+      "Datadog system.cpu.iowait is a percent value per host, averaged across CPUs, and the max is taken over hosts. The candidate takes max over every per-CPU series, which yields the busiest single core rather than the host average, so the aggregation differs.",
+      "Units differ: Datadog reports percent (0-100) while system.cpu.utilization is a ratio (unit '1'). The x100 scale cannot be applied in promql, so this needs a note and a documented scale.",
+      "The series grain differs: the candidate works on per-cpu series, while Datadog works on per-host series. The label that would collapse them is cpu_logical_number, and it needs an avg by host step before the max.",
+      "The candidate's cpu_mode=\"wait\" matcher is valid for the observed label cpu_mode. The template variable $scope has no prefix and default '*', so it is correctly dropped."
+    ],
+    "verdict": "block"
+  },
+  "system_sha256": "e0d8b72a4befbaa6388399933cfa793d987b2671eb1ddcc83e53b654c0a46971"
+}

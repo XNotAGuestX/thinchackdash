@@ -66,7 +66,6 @@ def test_compiles_tag_filters_into_matchers() -> None:
 def test_blocking_checks() -> None:
     cases = {
         "avg:postgresql.connections{*}.rollup(max)": "UNSUPPORTED_QUERY_FUNCTION",
-        "postgresql.connections{*}": "MISSING_AGGREGATOR",
         "avg:system.io.util{$scope}": "MISSING_METRIC_MAPPING",
         "avg:postgresql.connections{*} by {table}": "MISSING_LABEL_MAPPING",
         "avg:postgresql.connections{table:x}": "MISSING_LABEL_MAPPING",

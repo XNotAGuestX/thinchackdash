@@ -91,11 +91,14 @@ requests:
   live_check:
     agent0: yes, 3 series (1 per formula; each metric has 2 input series)
   expected:
-    outcome: blocked
-    errors:
-    - MISSING_AGGREGATOR
-  notes:
-  - 'rule overlay: MISSING_AGGREGATOR blocks the request (converter, PR #85); Agent0''s translation is discarded: avg(rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval])) ; avg(rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum"}[$__rate_interval])) ; avg(rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))'
+    outcome: translated
+    promql:
+    - avg(rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval]))
+    - avg(rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum"}[$__rate_interval]))
+    - avg(rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))
+    errors: []
+    warnings:
+    - TEMPLATE_VARIABLE_DROPPED
 - source_path: widgets[3].definition.requests[0]
   milestone: p1
   reviewed: false
@@ -120,11 +123,12 @@ requests:
   live_check:
     agent0: yes, 1 series
   expected:
-    outcome: blocked
-    errors:
-    - MISSING_AGGREGATOR
-  notes:
-  - 'rule overlay: MISSING_AGGREGATOR blocks the request (converter, PR #85); Agent0''s translation is discarded: avg({otel_metric_name="system.cpu.load_average.1m", otel_metric_type="gauge"})'
+    outcome: translated
+    promql:
+    - avg({otel_metric_name="system.cpu.load_average.1m", otel_metric_type="gauge"})
+    errors: []
+    warnings:
+    - TEMPLATE_VARIABLE_DROPPED
 - source_path: widgets[4].definition.requests[1]
   milestone: p1
   reviewed: false
@@ -134,11 +138,12 @@ requests:
   live_check:
     agent0: yes, 1 series
   expected:
-    outcome: blocked
-    errors:
-    - MISSING_AGGREGATOR
-  notes:
-  - 'rule overlay: MISSING_AGGREGATOR blocks the request (converter, PR #85); Agent0''s translation is discarded: avg({otel_metric_name="system.cpu.load_average.5m", otel_metric_type="gauge"})'
+    outcome: translated
+    promql:
+    - avg({otel_metric_name="system.cpu.load_average.5m", otel_metric_type="gauge"})
+    errors: []
+    warnings:
+    - TEMPLATE_VARIABLE_DROPPED
 - source_path: widgets[4].definition.requests[2]
   milestone: p1
   reviewed: false
@@ -148,11 +153,12 @@ requests:
   live_check:
     agent0: yes, 1 series
   expected:
-    outcome: blocked
-    errors:
-    - MISSING_AGGREGATOR
-  notes:
-  - 'rule overlay: MISSING_AGGREGATOR blocks the request (converter, PR #85); Agent0''s translation is discarded: avg({otel_metric_name="system.cpu.load_average.15m", otel_metric_type="gauge"})'
+    outcome: translated
+    promql:
+    - avg({otel_metric_name="system.cpu.load_average.15m", otel_metric_type="gauge"})
+    errors: []
+    warnings:
+    - TEMPLATE_VARIABLE_DROPPED
 - source_path: widgets[5].definition.requests[0]
   milestone: p1
   reviewed: false
@@ -164,7 +170,9 @@ requests:
   expected:
     outcome: blocked
     errors:
-    - MISSING_AGGREGATOR
+    - MISSING_METRIC_MAPPING
+  notes:
+  - 'error code is a proposal: Agent0 blocked the request and no source-text rule applies; the converter''s code depends on the reviewed mapping'
 - source_path: widgets[6].definition.requests[0]
   milestone: p1
   reviewed: false
@@ -271,9 +279,17 @@ widgets:
   milestone: p1
   reviewed: false
   expected:
-    outcome: blocked
-    errors:
-    - MISSING_AGGREGATOR
+    outcome: translated
+    panel_key: widget-2
+    title: Inserts / updates / deletes (per sec)
+    panel_plugin: TimeSeriesChart
+    promql: &id003
+    - avg(rate({otel_metric_name="postgresql.tup_inserted", otel_metric_type="sum"}[$__rate_interval]))
+    - avg(rate({otel_metric_name="postgresql.tup_deleted", otel_metric_type="sum"}[$__rate_interval]))
+    - avg(rate({otel_metric_name="postgresql.tup_updated", otel_metric_type="sum"}[$__rate_interval]))
+    errors: []
+    warnings:
+    - TEMPLATE_VARIABLE_DROPPED
 - source_path: widgets[3]
   type: timeseries
   milestone: p1
@@ -283,7 +299,7 @@ widgets:
     panel_key: widget-3
     title: Disk utilization (%)
     panel_plugin: TimeSeriesChart
-    promql: &id003
+    promql: &id004
     - avg(rate({otel_metric_name="system.disk.io_time", otel_metric_type="sum"}[$__rate_interval]))
     errors: []
     warnings:
@@ -293,9 +309,17 @@ widgets:
   milestone: p1
   reviewed: false
   expected:
-    outcome: blocked
-    errors:
-    - MISSING_AGGREGATOR
+    outcome: translated
+    panel_key: widget-4
+    title: System load
+    panel_plugin: TimeSeriesChart
+    promql: &id005
+    - avg({otel_metric_name="system.cpu.load_average.1m", otel_metric_type="gauge"})
+    - avg({otel_metric_name="system.cpu.load_average.5m", otel_metric_type="gauge"})
+    - avg({otel_metric_name="system.cpu.load_average.15m", otel_metric_type="gauge"})
+    errors: []
+    warnings:
+    - TEMPLATE_VARIABLE_DROPPED
 - source_path: widgets[5]
   type: timeseries
   milestone: p1
@@ -303,7 +327,7 @@ widgets:
   expected:
     outcome: blocked
     errors:
-    - MISSING_AGGREGATOR
+    - MISSING_METRIC_MAPPING
 - source_path: widgets[6]
   type: timeseries
   milestone: p1
@@ -313,7 +337,7 @@ widgets:
     panel_key: widget-6
     title: I/O wait (%)
     panel_plugin: TimeSeriesChart
-    promql: &id004
+    promql: &id006
     - max({otel_metric_name="system.cpu.utilization", otel_metric_type="gauge", cpu_mode="wait"})
     errors: []
     warnings:
@@ -327,7 +351,7 @@ widgets:
     panel_key: widget-7
     title: System memory
     panel_plugin: TimeSeriesChart
-    promql: &id005
+    promql: &id007
     - sum({otel_metric_name="system.linux.memory.available", otel_metric_type="sum"})
     - sum({otel_metric_name="system.memory.limit", otel_metric_type="sum"}) - sum({otel_metric_name="system.linux.memory.available", otel_metric_type="sum"})
     errors: []
@@ -342,7 +366,7 @@ widgets:
     panel_key: widget-8
     title: Network traffic (per sec)
     panel_plugin: TimeSeriesChart
-    promql: &id006
+    promql: &id008
     - sum(rate({otel_metric_name="system.network.io", otel_metric_type="sum", system_network_direction="receive"}[$__rate_interval]))
     - sum(rate({otel_metric_name="system.network.io", otel_metric_type="sum", system_network_direction="transmit"}[$__rate_interval]))
     errors: []
@@ -363,24 +387,28 @@ dashboard:
       panel_key: widget-1
       promql: *id002
     - source_path: widgets[2]
-      outcome: blocked
+      outcome: translated
+      panel_key: widget-2
+      promql: *id003
     - source_path: widgets[3]
       outcome: translated
       panel_key: widget-3
-      promql: *id003
+      promql: *id004
     - source_path: widgets[4]
-      outcome: blocked
+      outcome: translated
+      panel_key: widget-4
+      promql: *id005
     - source_path: widgets[5]
       outcome: blocked
     - source_path: widgets[6]
       outcome: translated
       panel_key: widget-6
-      promql: *id004
+      promql: *id006
     - source_path: widgets[7]
       outcome: translated
       panel_key: widget-7
-      promql: *id005
+      promql: *id007
     - source_path: widgets[8]
       outcome: translated
       panel_key: widget-8
-      promql: *id006
+      promql: *id008

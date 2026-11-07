@@ -264,7 +264,7 @@ def test_out_dir_writes_there_and_never_builds(tmp_path: Path, fake_mcp: dict, m
     fake_mcp["agent"] = FakeAgent0([started(THREAD_A)], [fenced(good_answer(key), THREAD_A)])
     out = tmp_path / "agent0-r2"
 
-    assert ro.main([str(write_input(tmp_path, [key])), "--full", "--out-dir", str(out)]) == 0
+    assert ro.main([str(write_input(tmp_path, [key])), "--mode", "answer", "--full", "--out-dir", str(out)]) == 0
     assert (out / key / "answer.yaml").read_text().endswith(good_answer(key))
     assert (out / key / "prompt.md").read_text() == ro.render_oracle_prompt.render(key)
     assert json.loads((out / "state.json").read_text())["cases"][key]["status"] == "done"
@@ -276,7 +276,7 @@ def test_answer_mode_cli_still_builds(tmp_path: Path, fake_mcp: dict, monkeypatc
     monkeypatch.setattr(ro, "AGENT0_DIR", tmp_path / "agent0")
     monkeypatch.setattr(ro, "DEFAULT_STATE", tmp_path / "agent0" / "state.json")
     fake_mcp["agent"] = FakeAgent0([started(THREAD_A)], [fenced(good_answer(key), THREAD_A)])
-    assert ro.main([str(write_input(tmp_path, [key]))]) == 0
+    assert ro.main([str(write_input(tmp_path, [key])), "--mode", "answer"]) == 0
     assert fake_mcp["built"] == [key] and (tmp_path / "agent0" / key / "answer.yaml").is_file()
 
 
@@ -305,7 +305,30 @@ def test_dry_runs_print_the_plan_without_network(tmp_path: Path, monkeypatch: py
     assert "mode judge" in out and "build_expected: no" in out and f"queued {KEY}" in out
 
     r2 = tmp_path / "r2"
-    assert ro.main(["--full", "--out-dir", str(r2), "--dry-run"]) == 0
+    assert ro.main(["--mode", "answer", "--full", "--out-dir", str(r2), "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "build_expected: no" in out and out.count("queued ") == len(ALL_KEYS)
     assert not r2.exists()
+
+
+def test_default_runs_author_judge_haiku_then_triage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import crosscheck
+    import triage
+
+    calls: list[object] = []
+    monkeypatch.setattr(ro, "run_mode", lambda args, name, refresh_stale=False: calls.append((name, refresh_stale)) or 0)
+    monkeypatch.setattr(crosscheck, "main", lambda argv: calls.append(("haiku", argv)) or 0)
+    monkeypatch.setattr(triage, "main", lambda argv: calls.append(("triage", argv)) or 0)
+    assert ro.main(["--case", KEY]) == 0
+    assert calls == [("answer", False), ("judge", True), ("haiku", ["input", KEY, "--retries", "3"]), ("triage", [])]
+
+    calls.clear()
+    assert ro.main([str(write_input(tmp_path, [KEY])), "--dry-run"]) == 0
+    assert calls[2] == ("haiku", ["input", KEY, "--retries", "3", "--dry-run"]) and len(calls) == 3  # no triage
+
+
+def test_default_stops_on_setup_error_and_rejects_out_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(ro, "run_mode", lambda args, name, refresh_stale=False: calls.append(name) or 2)
+    assert ro.main(["--case", KEY]) == 2 and calls == ["answer"]
+    assert ro.main(["--out-dir", "x"]) == 2

@@ -1,7 +1,7 @@
 """Combine verifier verdicts into a review priority per request (development time only, issue #87).
 
 Reads the verdict files of scripts/verify_common.py (fixtures/oracle/verify/<key>/<verifier>.yaml) and
-the mutation verdicts (fixtures/oracle/verify/mutations/), and writes fixtures/expected/TRIAGE.md.
+writes fixtures/expected/TRIAGE.md plus fixtures/expected/verified.json.
 Triage only, never approval: a human sets `reviewed: true` in overrides.yaml (fixtures/expected/REVIEW.md).
 
 Priority per request:
@@ -9,10 +9,12 @@ Priority per request:
   yellow      any nit, or judge and haiku both present and different
   green       every present verdict passes and judge or haiku is present
   unverified  otherwise
-A verifier whose mutation catch rate is measured (>= MIN_MUTATIONS known-bad variants) and below
-THRESHOLD is untrusted: its nit/block findings still count, but its pass is not evidence for green.
+By default every verifier is trusted: the checkers themselves are not tested. With --catch-rates, the
+mutation verdicts (fixtures/oracle/verify/mutations/) are read too, and a verifier whose catch rate is
+measured (>= MIN_MUTATIONS known-bad variants) and below THRESHOLD is untrusted: its nit/block findings
+still count, but its pass is not evidence for green.
 
-Usage: uv run scripts/triage.py [--all | <svc>/<id> ...] [--out PATH]
+Usage: uv run scripts/triage.py [--all | <svc>/<id> ...] [--out PATH] [--catch-rates]
 """
 
 from __future__ import annotations
@@ -125,8 +127,8 @@ def priorities(
 ) -> dict[str, dict[str, Any]]:
     """Every request of one dashboard, in case order:
     {source_path: {priority, signals: {verifier: verdict}, reasons: {verifier: [..]}, untrusted: [..]}}.
-    Trust comes from the catch rates over all dashboards unless `rates` is given."""
-    untrusted = untrusted_verifiers(catch_rates(vc.all_keys()) if rates is None else rates)
+    Every verifier is trusted unless `rates` (catch_rates) is given."""
+    untrusted = untrusted_verifiers(rates or {})
     files = {v: vc.read_verdicts(key, v) for v in vc.VERIFIERS}
     out: dict[str, dict[str, Any]] = {}
     for request in vc.load_case(key)["requests"]:
@@ -161,9 +163,10 @@ starting with red and yellow: accept or correct a request in
 
 Priority: **red** = any verifier says block; **yellow** = a nit, or judge and haiku disagree;
 **green** = every trusted verdict passes and judge or haiku checked the request; **unverified** =
-otherwise. A verifier whose catch rate on known-bad mutations is measured (at least {min} mutations) and
-below {threshold:.0%} is *untrusted*: its nit/block findings still count (a low catch rate means it misses
-errors, not that its findings are wrong), but its pass is not evidence for green. Verdict files: `fixtures/oracle/verify/<service>/<dashboard_id>/<verifier>.yaml`.
+otherwise. Only with `scripts/triage.py --catch-rates` are the verifiers themselves tested: a verifier
+whose catch rate on known-bad mutations is measured (at least {min} mutations) and below {threshold:.0%} is
+*untrusted*: its nit/block findings still count (a low catch rate means it misses errors, not that its
+findings are wrong), but its pass is not evidence for green. Verdict files: `fixtures/oracle/verify/<service>/<dashboard_id>/<verifier>.yaml`.
 """
 
 
@@ -198,7 +201,7 @@ def render(keys: list[str], rates: dict[str, dict[str, Any]]) -> str:
 
     lines += ["", "## Verifier catch rates (known-bad mutations)", ""]
     if not rates:
-        lines.append("No mutation verdicts yet (scripts/mutate_expected.py, then each verifier on the mutations); every verifier counts as trusted.")
+        lines.append("Not measured (default; `--catch-rates` reads the mutation verdicts of scripts/mutate_expected.py): every verifier counts as trusted.")
     else:
         lines += ["| Verifier | Caught / total | Rate | Structural | Trusted |", "|---|---|---|---|---|"]
         for v, r in rates.items():
@@ -248,7 +251,7 @@ def _anchor(key: str) -> str:
 
 def write(keys: list[str], out: Path | None = None, rates: dict[str, dict[str, Any]] | None = None) -> Path:
     out = out or TRIAGE_MD
-    out.write_text(render(keys, catch_rates(vc.all_keys()) if rates is None else rates))
+    out.write_text(render(keys, rates or {}))
     return out
 
 
@@ -268,11 +271,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("keys", nargs="*", metavar="SVC/ID")
     p.add_argument("--all", action="store_true", help="every case in fixtures/oracle/dashboards.json (default)")
     p.add_argument("--out", type=Path, default=None, help=f"output file (default: {TRIAGE_MD.relative_to(ROOT)})")
+    p.add_argument("--catch-rates", action="store_true", help="test the verifiers on the known-bad mutations; distrust weak ones")
     args = p.parse_args(sys.argv[1:] if argv is None else argv)
     if args.all and args.keys:
         p.error("give case keys or --all (not both)")
     keys = args.keys or vc.all_keys()
-    rates = catch_rates(vc.all_keys())
+    rates = catch_rates(vc.all_keys()) if args.catch_rates else {}
     out = write(keys, args.out, rates)
     if args.out is None:
         write_verified(rates)

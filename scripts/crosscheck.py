@@ -571,7 +571,7 @@ def main(argv: list[str] | None = None, judge: Judge | None = None) -> int:
     if args.mode == "rerun" and not args.round2_dir.is_dir():
         print(
             f"error: no round-2 answers: {args.round2_dir} does not exist;"
-            " run scripts/run_oracle.py --out-dir fixtures/oracle/agent0-r2 first",
+            " run scripts/run_oracle.py --mode answer --out-dir fixtures/oracle/agent0-r2 first",
             file=sys.stderr,
         )
         return 2
@@ -597,7 +597,7 @@ def main(argv: list[str] | None = None, judge: Judge | None = None) -> int:
         if args.mode == "rerun":
             print(
                 f"error: no round-2 answers under {args.round2_dir} for the selected cases;"
-                " run scripts/run_oracle.py --out-dir fixtures/oracle/agent0-r2 first",
+                " run scripts/run_oracle.py --mode answer --out-dir fixtures/oracle/agent0-r2 first",
                 file=sys.stderr,
             )
         else:

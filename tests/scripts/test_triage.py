@@ -101,7 +101,7 @@ def test_untrusted_verifier_findings_still_count(tmp_verify: Path) -> None:
     sps = paths()
     write("judge", {sps[0]: "block"})
     write("haiku", {sps[0]: "pass"})
-    row = triage.priorities(KEY)[sps[0]]
+    row = triage.priorities(KEY, rates=triage.catch_rates(vc.all_keys()))[sps[0]]
     assert row["priority"] == "red"
     assert row["signals"] == {"judge": "block", "haiku": "pass"}
     assert row["untrusted"] == ["judge"]
@@ -112,7 +112,19 @@ def test_low_rate_with_few_mutations_stays_trusted(tmp_verify: Path) -> None:
     write_mutation_verdicts("judge", muts, set())  # 0% but not measured (< 10)
     sps = paths()
     write("judge", {sps[0]: "block"})
-    assert triage.priorities(KEY)[sps[0]]["priority"] == "red"
+    assert triage.priorities(KEY, rates=triage.catch_rates(vc.all_keys()))[sps[0]]["priority"] == "red"
+
+
+def test_verifiers_are_not_tested_by_default(tmp_path: Path, tmp_verify: Path) -> None:
+    muts = write_mutations(tmp_verify, 10, 0)
+    write_mutation_verdicts("judge", muts, set())  # 0% catch rate, measured
+    sps = paths()
+    write("judge", {sps[0]: "pass"})
+    assert triage.priorities(KEY)[sps[0]]["priority"] == "green"
+    assert triage.priorities(KEY, rates=triage.catch_rates(vc.all_keys()))[sps[0]]["priority"] == "unverified"
+    out = tmp_path / "t.md"
+    assert triage.main(["--out", str(out)]) == 0
+    assert "Not measured (default" in out.read_text()
 
 
 # --------------------------------------------------------------------------- catch rates
@@ -152,8 +164,8 @@ def test_triage_md_is_deterministic_and_ordered(tmp_path: Path, tmp_verify: Path
     muts = write_mutations(tmp_verify, 10, 2)
     write_mutation_verdicts("lint", muts, {m["id"] for m in muts})
     out1, out2 = tmp_path / "a.md", tmp_path / "b.md"
-    assert triage.main(["--out", str(out1)]) == 0
-    assert triage.main(["--all", "--out", str(out2)]) == 0
+    assert triage.main(["--catch-rates", "--out", str(out1)]) == 0
+    assert triage.main(["--catch-rates", "--all", "--out", str(out2)]) == 0
     text = out1.read_text()
     assert text == out2.read_text()
     assert "count as verified" in text and "reviewed: true" in text and "overrides.yaml" in text

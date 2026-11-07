@@ -161,6 +161,9 @@ def test_standard_run_selects_only_new_cases_and_resumes_pending(tmp_path: Path)
     ]
     assert len(warnings) == 1 and keys[1] in warnings[0]
 
+    refreshed, warnings = ro.select_jobs(specs, state, prompts, refresh_stale=True)
+    assert [j.spec.key for j in refreshed] == [keys[1], keys[2], keys[3]] and warnings == []
+
     full, _ = ro.select_jobs(specs, state, prompts, full=True)
     assert [(j.spec.key, j.resume_thread_id) for j in full] == [(k, None) for k in keys]
 

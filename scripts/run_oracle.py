@@ -6,12 +6,20 @@ conversion path (AGENTS.md): nothing under src/ imports it, and the converter
 never reads its output.
 
 Usage:
-  uv run scripts/run_oracle.py [INPUT_JSON] [--mode answer|judge] [--jobs N] [--retries N]
+  uv run scripts/run_oracle.py [INPUT_JSON] [--mode all|answer|judge] [--jobs N] [--retries N]
                                 [--full] [--case SVC/ID ...] [--out-dir DIR]
                                 [--adopt-existing] [--dry-run]
 
-Modes (same runner, state, retries and resume; only prompt, validation and output differ):
-  --mode answer (default)  scripts/render_oracle_prompt.py -> fixtures/oracle/agent0/<key>/
+Default (--mode all): the whole expectation loop in one command, for the selected cases:
+  1. Agent0 as author   --mode answer, then scripts/build_expected.py
+  2. Agent0 as reviewer --mode judge (also re-judges cases whose expected.yaml changed)
+  3. Haiku as reviewer  scripts/crosscheck.py input <cases>
+  4. scripts/triage.py  colours every request; green ones land in fixtures/expected/verified.json
+  The verifiers themselves are not tested (no mutations, no catch rates; see scripts/triage.py).
+  Needs DASH0_AUTH_TOKEN and ANTHROPIC_API_KEY. With --dry-run, every step only shows what it would do.
+
+Single steps (same runner, state, retries and resume; only prompt, validation and output differ):
+  --mode answer            scripts/render_oracle_prompt.py -> fixtures/oracle/agent0/<key>/
                            {prompt.md, answer.yaml} -> scripts/build_expected.py.
                            State: fixtures/oracle/agent0/state.json.
   --mode judge             issue #87 verifier `judge`: scripts/render_judge_prompt.py
@@ -23,7 +31,7 @@ Modes (same runner, state, retries and resume; only prompt, validation and outpu
                            <DIR>/state.json (judge: <DIR>/state.judge.json), and never run
                            build_expected (it only reads fixtures/oracle/agent0). A second,
                            independent answer round for comparison (issue #87, W3a):
-                             uv run scripts/run_oracle.py --full --out-dir fixtures/oracle/agent0-r2
+                             uv run scripts/run_oracle.py --mode answer --full --out-dir fixtures/oracle/agent0-r2
 
 INPUT_JSON (default fixtures/oracle/dashboards.json):
   {"dataset": "default", "model_class": "advanced", "reasoning_effort": "high",
@@ -225,8 +233,10 @@ def select_jobs(
     *,
     full: bool = False,
     only: set[str] | None = None,
+    refresh_stale: bool = False,
 ) -> tuple[list[Job], list[str]]:
-    """Return the jobs to run and warnings (stale done cases that will not be re-asked)."""
+    """Return the jobs to run and warnings (stale done cases that will not be re-asked).
+    With refresh_stale, a done case whose prompt changed is asked again instead."""
     jobs: list[Job] = []
     warnings: list[str] = []
     for spec in specs:
@@ -236,7 +246,7 @@ def select_jobs(
         entry = state.get(spec.key) or {}
         same_prompt = entry.get("prompt_sha256") == prompt_sha256(prompt)
         forced = full or only is not None
-        if entry.get("status") == "done" and not forced:
+        if entry.get("status") == "done" and not forced and not (refresh_stale and not same_prompt):
             if not same_prompt:
                 warnings.append(f"{spec.key}: prompt changed since the answer was recorded (use --case or --full)")
             continue
@@ -472,6 +482,7 @@ def judge_summary(items: list[dict]) -> str:
 
 
 MODES = ("answer", "judge")
+PIPELINE = "all"
 
 
 def get_mode(name: str = "answer", out_dir: Path | None = None) -> Mode:
@@ -786,7 +797,13 @@ def display_path(path: Path) -> str:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("input", nargs="?", type=Path, default=DEFAULT_INPUT, help="dashboards JSON (default: %(default)s)")
-    p.add_argument("--mode", choices=MODES, default="answer", help="answer: propose expectations; judge: verdicts on expected.yaml (default: answer)")
+    p.add_argument(
+        "--mode",
+        choices=(PIPELINE, *MODES),
+        default=PIPELINE,
+        help="all: Agent0 author + Agent0 judge + Haiku + triage; answer: propose expectations only;"
+        " judge: verdicts on expected.yaml only (default: all)",
+    )
     p.add_argument("--out-dir", type=Path, help="write <DIR>/<key>/... and <DIR>/state.json instead; implies --no-build")
     p.add_argument("--state", type=Path, help="state JSON (default: per mode, see above)")
     p.add_argument("--jobs", "-j", type=int, default=3, help="dashboards asked in parallel (default: 3)")
@@ -805,8 +822,46 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.mode == PIPELINE:
+        return run_pipeline(args)
+    return run_mode(args, args.mode)
+
+
+def run_pipeline(args: argparse.Namespace) -> int:
+    """Default: Agent0 writes, Agent0 reviews, Haiku reviews, triage colours (see the module docstring).
+    A step that fails for some cases does not stop the next steps for the others; a setup error does."""
+    if args.out_dir or args.state:
+        print("error: --out-dir and --state need --mode answer or --mode judge", file=sys.stderr)
+        return 2
+    import crosscheck  # development-time verifiers, only needed here
+    import triage
+
+    codes = []
+    for name in MODES:
+        print(f"== Agent0 {'author' if name == 'answer' else 'reviewer'} (--mode {name})")
+        code = run_mode(args, name, refresh_stale=name == "judge")
+        if code == 2:
+            return 2
+        codes.append(code)
     try:
-        mode = get_mode(args.mode, args.out_dir)
+        keys = sorted(args.case) if args.case else [s.key for s in load_input(args.input)]
+    except InputError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print("== Haiku reviewer (scripts/crosscheck.py input)")
+    code = crosscheck.main(["input", *keys, "--retries", str(args.retries), *(["--dry-run"] if args.dry_run else [])])
+    if code == 2:
+        return 2
+    codes.append(code)
+    if not args.dry_run:
+        print("== triage (scripts/triage.py)")
+        codes.append(triage.main([]))
+    return max(codes)
+
+
+def run_mode(args: argparse.Namespace, name: str, *, refresh_stale: bool = False) -> int:
+    try:
+        mode = get_mode(name, args.out_dir)
         specs = load_input(args.input)
         only = set(args.case) if args.case else None
         if only:
@@ -838,7 +893,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             for key in adopt_existing(specs, state, prompts, mode.out_dir, prompt_name=mode.prompt_name, answer_name=mode.answer_name):
                 print(f"[{key}] adopted existing {mode.answer_name} as done")
-    jobs, warnings = select_jobs(specs, state, prompts, full=args.full, only=only)
+    jobs, warnings = select_jobs(specs, state, prompts, full=args.full, only=only, refresh_stale=refresh_stale)
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
     if not jobs:

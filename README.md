@@ -1,5 +1,9 @@
 # Datadog → Dash0 Migrator
 
+> 🥉 **3rd place at THINC! Hack Munich 2026**, winning €250 in cash plus additional prizes.
+>
+> Built by **Felix Bischof, Madhav Gupta, Sofia Armstrong and Bjarne Zachaiae** (team MiaSanOutOfCredits) for the Dash0 case.
+
 **📄 Presentation: [Deterministic Migration (Dash0 case)](00_dash0_case_pr%C3%A4sentation.pdf)**
 
 The local UI also supports explicitly requested Agent0 recommendations for blocked

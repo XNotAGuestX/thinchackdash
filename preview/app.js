@@ -362,8 +362,9 @@
     finish(id);
   }
 
-  // Each stage stays on screen for at least its minimum, however fast the backend answers.
-  const MIN_READ = 1100, MIN_TRANSLATE = 1500, REVEAL = 1500;
+  // Each stage stays on screen for at least its minimum, however fast the backend answers
+  // (the converter itself takes about 30 ms), long enough to read what each step does.
+  const MIN_READ = 2000, MIN_TRANSLATE = 2800, REVEAL = 1500;
 
   async function runReal() {
     const startBtn = $("#start-btn");
@@ -981,6 +982,8 @@
      Read items and navigate only. Nothing here changes an item or a compiler result. */
   window.MigrateApp = {
     items: () => items,
+    // The recorded Datadog vs Dash0 difference for a with-remarks item, or null (see RECORDED).
+    recorded: (it) => { const r = recordedFor(it); return r && { meanDifferencePct: r.diff, allowedPct: r.tol, recordedRun: RECORDED_RUN }; },
     ready: () => board.classList.contains("is-done"),
     async showResults() {
       if (!screens.run.classList.contains("is-active")) await show("run");

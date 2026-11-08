@@ -18,9 +18,9 @@ from backend.ai import ROOT, setting
 API = "https://api.elevenlabs.io"
 VOICE_CACHE = ROOT / ".copilot-voice"
 MAX_SPEECH = 400
-TTS_MODEL = "eleven_multilingual_v2"
-# Calm, steady narration (see preview/DEMO_SCRIPT.md).
-VOICE_SETTINGS = {"stability": 0.45, "similarity_boost": 0.75, "style": 0.25, "use_speaker_boost": True}
+# Same model and settings as the live agent's voice (preview/AGENT_SETUP.md), so the tour and Jarvis sound alike.
+TTS_MODEL = "eleven_flash_v2"
+VOICE_SETTINGS = {"stability": 0.5, "similarity_boost": 0.8, "speed": 1.1}
 NOT_CONFIGURED = (
     "Voice copilot is not configured. Set ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID "
     "in the environment or .env, then restart the backend."

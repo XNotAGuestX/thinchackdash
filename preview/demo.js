@@ -19,10 +19,10 @@
   const $ = (sel) => document.querySelector(sel);
   const params = new URLSearchParams(location.search);
 
-  // The voice-over. Times are seconds from the start of the tour, fitted to the recorded take
-  // (voice/line-N.m4a, 15 % faster than the ElevenLabs export). DEMO_SCRIPT.md mirrors this table.
+  // The voice-over. Times are seconds from the start of the tour; each recorded line
+  // (voice/line-N.m4a, the agent's voice) fits inside its at–end slot. DEMO_SCRIPT.md mirrors this table.
   const LINES = [
-    { at: 0.6, end: 5.49, text: "Hi, I'm Jarvis. Let's move your Datadog setup to Dash0." },
+    { at: 0.6, end: 5.49, text: "Let's move your Datadog setup to Dash0." },
     { at: 6.0, end: 10.44, text: "We'll start with this online shop: a checkout dashboard and its alert." },
     { at: 11.6, end: 17.84, text: "Now every query is translated by fixed rules. No guessing: the same input always gives the same result." },
     { at: 20.0, end: 26.31, text: "Done. Four widgets moved one to one, two need a quick review, and three are blocked." },
@@ -48,7 +48,8 @@
     { at: 6.4, run: () => $(SAMPLE).click() },
     { at: 10.8, run: () => J.touch($("#start-btn")) },
     { at: 11.2, run: () => { $("#start-btn").click(); J.state("working"); } },
-    // The real run takes about 8.3 s after Convert.
+    // The real run takes about 11 s after Convert (read and translate are paced so they can be read);
+    // the plan waits for the results and the rest of the tour shifts with it.
     { at: 19.8, run: () => { J.state("idle"); J.touch($("#category-summary"), 1600); }, results: true },
     { at: 26.5, run: () => J.tools.highlight_issue({ issue_id: "Checkout error rate (%)" }) },
     // Ask AI is only introduced: Jarvis points at it but never clicks (a click would call Agent0).

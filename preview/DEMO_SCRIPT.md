@@ -1,8 +1,9 @@
 # Jarvis demo: 60-second voice-over script
 
 The guided demo in the local UI (`preview/demo.js`) walks through the whole tool in exactly
-60 seconds. The timings below are fitted to the recorded ElevenLabs take (Eleven v3, played
-15 % faster without changing pitch): `preview/voice/line-1.m4a` … `line-9.m4a`. They are the
+60 seconds. The lines are recorded in the agent's own voice, model and settings (ElevenLabs "River",
+`eleven_flash_v2`, speed 1.1; see `AGENT_SETUP.md`), so the tour and the live Jarvis are one voice; one file per line, each fitting inside its slot: `preview/voice/line-1.m4a` … `line-9.m4a`.
+The times below are the
 same as `LINES` in `preview/demo.js`; change both together.
 
 ## Recording the video
@@ -31,7 +32,7 @@ numbers (4 / 2 / 3, 44%) are that sample's actual result.
 
 | # | Start | Ends | Length | On screen | Line (with v3 audio tags) | Direction |
 |---|---|---|---|---|---|---|
-| 1 | 0:00.6 | 0:05.5 | 4.9 s | Start screen; the dot wakes up | `[warmly] Hi, I'm Jarvis. [short pause] Let's move your Datadog setup to Dash0.` | Friendly opener, relaxed. Small lift on "Dash0". |
+| 1 | 0:00.6 | 0:05.5 | 4.9 s | Start screen; the dot wakes up | `[warmly] Let's move your Datadog setup to Dash0.` | Friendly opener, relaxed. Small lift on "Dash0". Jarvis has already introduced itself when it asked about the tour. |
 | 2 | 0:06.0 | 0:10.4 | 4.4 s | Jarvis picks the "Online shop checkout" sample | `We'll start with this online shop: [short pause] a checkout dashboard and its alert.` | Matter-of-fact, guiding. Light stress on "checkout dashboard". |
 | 3 | 0:11.6 | 0:17.8 | 6.2 s | Convert; the dial turns (read → translate → check) | `[confident] Now every query is translated by fixed rules. [short pause] No guessing: the same input always gives the same result.` | The key message. Slower, deliberate. Firm stop after "No guessing". |
 | 4 | 0:20.0 | 0:26.3 | 6.3 s | Results board; the outcome summary is marked | `Done. [short pause] Four widgets moved one to one, two need a quick review, and three are blocked.` | Satisfied "Done.", then a clear, even list. No drama on "blocked". |
@@ -46,7 +47,7 @@ The dot settles into its passive state at 0:59.2; the video ends at 1:00.0.
 ### Plain text (copy into ElevenLabs line by line)
 
 ```
-1  Hi, I'm Jarvis. Let's move your Datadog setup to Dash0.
+1  Let's move your Datadog setup to Dash0.
 2  We'll start with this online shop: a checkout dashboard and its alert.
 3  Now every query is translated by fixed rules. No guessing: the same input always gives the same result.
 4  Done. Four widgets moved one to one, two need a quick review, and three are blocked.

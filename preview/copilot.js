@@ -140,6 +140,8 @@
         translation: q.translation ?? (it.status === "unsupported" ? "None: blocked, no automatic translation." : null),
         reason: it.why,
         suggestion: it.action || it.suggestion?.code || null,   // the compiler's suggested action; never model-made
+        // With remarks only: the recorded live comparison of this query (not measured in this run).
+        recordedComparison: app.recorded?.(it) || null,
       });
     },
 
@@ -245,7 +247,8 @@
     const loop = async () => {
       if (!conv) { root.style.removeProperty("--lvl"); return; }
       const speaking = root.dataset.state === "speaking";
-      const v = await (speaking ? conv.getOutputVolume() : conv.getInputVolume()).catch(() => 0);
+      // The SDK returns a number (older versions a promise); either way a failure reads as silence.
+      const v = await Promise.resolve().then(() => (speaking ? conv.getOutputVolume() : conv.getInputVolume())).catch(() => 0);
       root.style.setProperty("--lvl", Math.min(1, v * 1.6).toFixed(3));
       raf = requestAnimationFrame(loop);
     };

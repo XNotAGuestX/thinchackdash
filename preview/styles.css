@@ -86,7 +86,11 @@ body.is-running .glow { opacity: 0.6; }
 /* Header */
 .top {
   position: fixed; top: 0; left: 0; right: 0; z-index: 5; padding: 18px var(--pad);
-  background: linear-gradient(var(--paper) 30%, color-mix(in srgb, var(--paper) 0%, transparent));
+  background: var(--paper);                    /* opaque behind the header text, so scrolled content never shows through */
+}
+.top::after {                                  /* the soft edge sits below the header, not behind its text */
+  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 28px; pointer-events: none;
+  background: linear-gradient(var(--paper), color-mix(in srgb, var(--paper) 0%, transparent));
 }
 .top-in { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 .top-right { display: flex; align-items: center; gap: 1.4rem; }
@@ -597,7 +601,8 @@ code {
 .rgroup-head:disabled { cursor: default; opacity: 0.5; }
 .rgroup.is-empty .rgroup-head, .rgroup.is-collapsed .rgroup-head { border-bottom-color: transparent; }
 .rgroup-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 380ms var(--ease); }
-.rgroup-body > div { overflow: hidden; min-height: 0; }
+/* Clip only vertically (the collapse); sideways, Jarvis's highlight may extend into the column padding. */
+.rgroup-body > div { overflow-x: visible; overflow-y: clip; min-height: 0; }
 .rgroup.is-collapsed .rgroup-body, .rgroup.is-empty .rgroup-body { grid-template-rows: 0fr; }
 .rgroup .item:last-child { border-bottom: 0; }
 
@@ -919,12 +924,16 @@ button:disabled { cursor: wait; opacity: 0.6; }
   .donut .arc { transition: none; }
 }
 
-.item.cp-hl { animation: cp-hl 3.2s var(--ease); }
-.item.cp-hl .item-btn .name { color: var(--signal); }
-@keyframes cp-hl {
-  0%, 70% { background: color-mix(in srgb, var(--signal) 12%, transparent); box-shadow: inset 2px 0 0 var(--signal); }
-  100% { background: transparent; box-shadow: inset 2px 0 0 transparent; }
+/* Jarvis's highlight: a tinted box that extends past the item on both sides (into the column
+   padding), so the accent bar sits clear of the icon and the content keeps its own edges. */
+.item.cp-hl { isolation: isolate; }
+.item.cp-hl::before {
+  content: ""; position: absolute; z-index: -1; inset: -1px -14px 0; pointer-events: none;
+  border-left: 2px solid var(--signal); background: color-mix(in srgb, var(--signal) 10%, transparent);
+  animation: cp-hl 3.2s var(--ease) forwards;
 }
+.item.cp-hl .item-btn .name { color: var(--signal); }
+@keyframes cp-hl { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
 .cp-sheet {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: min(640px, 100vw); overflow: auto;
@@ -1008,7 +1017,7 @@ button:disabled { cursor: wait; opacity: 0.6; }
 
 @media (max-width: 560px) { .jv { right: 12px; bottom: 12px; } }
 @media (prefers-reduced-motion: reduce) {
-  .jv *, .jv-touch, .item.cp-hl { animation: none !important; }
+  .jv *, .jv-touch, .item.cp-hl::before { animation: none !important; }
   .cp-sheet { transition: none; }
 }
 

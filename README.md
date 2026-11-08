@@ -6,6 +6,8 @@
 
 **📄 Presentation: [Deterministic Migration (Dash0 case)](00_dash0_case_pr%C3%A4sentation.pdf)**
 
+**🎬 Demo video (2 min): [demo/migrate-film.mp4](demo/migrate-film.mp4).** It shows the local UI converting the online-shop sample, with Jarvis, the ElevenLabs voice copilot, giving the tour and answering a live question.
+
 The local UI also supports explicitly requested Agent0 recommendations for blocked
 translations, capped at three calls per backend session. These drafts stay separate
 from the deterministic converter; see the exception in [AGENTS.md](AGENTS.md).

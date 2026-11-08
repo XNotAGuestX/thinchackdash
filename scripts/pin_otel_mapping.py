@@ -69,8 +69,8 @@ def _sort_key(row: Row) -> tuple[str, ...]:
     return (row["datadog"], row["otel"], flt, row.get("transform", ""), row.get("integration", ""))
 
 
-def parse_table(text: str) -> list[Row]:
-    """Rows of the page's mapping table for PREFIXES, all columns, deduped and sorted."""
+def parse_table(text: str, prefixes: tuple[str, ...] = PREFIXES) -> list[Row]:
+    """Rows of the page's mapping table for `prefixes`, all columns, deduped and sorted."""
     lines = [line for line in text.splitlines() if line.startswith("|")]
     if not lines or _cells(lines[0]) != HEADER:
         raise ValueError(f"unexpected table header: {_cells(lines[0]) if lines else None}")
@@ -91,7 +91,7 @@ def parse_table(text: str) -> list[Row]:
             transform and not _TRANSFORM.fullmatch(transform)
         ):
             raise ValueError(f"unrecognized filter or transform cell: {line[:200]}")
-        if not (otel.startswith(PREFIXES) or datadog.startswith(PREFIXES)):
+        if not (otel.startswith(prefixes) or datadog.startswith(prefixes)):
             continue
         row = {
             "datadog": datadog,

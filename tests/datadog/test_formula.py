@@ -1,4 +1,5 @@
 from migrator.source.datadog.formula import (
+    Abs,
     Bin,
     FormulaOk,
     Num,
@@ -45,4 +46,21 @@ def test_blocks_formulas_with_mismatched_grouping() -> None:
 
 def test_rejects_functions_and_junk_in_formulas() -> None:
     for text in ["top(query1, 5, 'mean', 'desc')", "query1 +", "-query1", "1.", "query1 ** 2", ""]:
+        assert not parse_formula(text).ok, text
+
+
+def test_abs_renders_promql_abs_exactly() -> None:
+    # Datadog abs(): "Graph the absolute value of the metric."
+    # (docs.datadoghq.com/dashboards/functions/arithmetic/#absolute); PromQL abs() is pointwise.
+    compiled = {"query1": RenderedQuery("A", ["l"]), "query2": RenderedQuery("B", ["l"])}
+    assert parse("abs(query1)").formula == Abs(Ref("query1"))
+    assert render_formula(parse("abs(query1)").formula, compiled) == RenderOk("abs(A)", ["l"])
+    r = render_formula(parse("abs(query1 - query2) * 2").formula, compiled)
+    assert r == RenderOk("abs((A) - (B)) * 2", ["l"])
+    r = render_formula(parse("abs(query1) / abs(query2)").formula, compiled)
+    assert r == RenderOk("abs(A) / abs(B)", ["l"])
+
+
+def test_abs_blocks_unsupported_argument_forms() -> None:
+    for text in ["abs()", "abs(query1, 2)", "abs(5)", "abs (query1)", "abs(query1", "ABS(query1)"]:
         assert not parse_formula(text).ok, text

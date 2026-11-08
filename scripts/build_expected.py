@@ -43,9 +43,10 @@ ROOT = Path(__file__).resolve().parent.parent
 PANEL_PLUGIN = {"timeseries": "TimeSeriesChart", "query_value": "StatChart", "note": "Markdown"}
 # Every Datadog function blocks its request: wrapping ones (`top(`, `per_second(`) in plan 02,
 # trailing ones (`.rollup()`, `.as_count()`) in plan 03 check 1, functions in formulas in plan 05
-# Task 5. No plan lifts this for dashboards. A function may only move into this allowlist through
-# its own plan task with an exact test; until then the list stays empty, whatever Agent0 proposes.
-ALLOWED_FUNCTIONS: frozenset[str] = frozenset()
+# Task 5. A function may only move into this allowlist through its own issue with an exact test,
+# whatever Agent0 proposes. `abs` (#119) converts in formulas only (formula.py); in a query string
+# it still blocks through WRAPPING_FN.
+ALLOWED_FUNCTIONS: frozenset[str] = frozenset({"abs"})
 AGGREGATORS = {"avg", "sum", "min", "max"}
 AGGREGATOR = re.compile(r"^(avg|sum|min|max):")
 LEADING_WORD = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*):")
@@ -94,7 +95,7 @@ def read_errors(request: dict) -> list[str]:
         codes.add("UNSUPPORTED_DATA_SOURCE")
     for f in request["formulas"]:
         # A function, or a reference to a non-metric query (the converter skips those queries).
-        if f and (FORMULA_FN.search(f) or other & set(IDENTIFIER.findall(f))):
+        if f and (set(FORMULA_FN.findall(f)) - ALLOWED_FUNCTIONS or other & set(IDENTIFIER.findall(f))):
             codes.add("UNSUPPORTED_FORMULA")
     return sorted(codes)
 

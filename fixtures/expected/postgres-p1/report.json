@@ -1201,12 +1201,12 @@
     },
     {
       "code": "UNSUPPORTED_FORMULA",
-      "message": "Formula syntax is not supported at offset 3.",
+      "message": "Function 'top' is not supported: Datadog ranks each series once over its points (https://docs.datadoghq.com/dashboards/functions/rank/#top); PromQL topk ranks at every step, and the docs leave the ranked window open.",
       "severity": "error",
       "sourceId": "dashboards/postgresql_screenboard_dashboard.json",
       "sourcePath": "widgets[3].definition.widgets[0].definition.requests[0].formulas[0].formula",
       "sourceText": "top(query1, 5, 'mean', 'desc')",
-      "suggestedAction": "Only +, -, *, / over query names and numbers convert."
+      "suggestedAction": "Remove top() to convert all series unranked, or migrate this widget manually."
     },
     {
       "code": "OPTION_IGNORED",
@@ -1882,12 +1882,12 @@
     },
     {
       "code": "UNSUPPORTED_QUERY_FUNCTION",
-      "message": "Query function '.rollup()' is not supported.",
+      "message": "Query function '.rollup()' is blocked: Datadog aligns rollup buckets to UNIX time and picks the default interval per graph (https://docs.datadoghq.com/dashboards/functions/rollup/); a PromQL '<agg>_over_time' window per dashboard step does not reproduce them.",
       "severity": "error",
       "sourceId": "dashboards/postgresql_screenboard_dashboard.json",
       "sourcePath": "widgets[5].definition.widgets[0].definition.requests[0].queries[0].query",
       "sourceText": "avg:postgresql.connections{$scope,$db,$host} by {db}.rollup(max)",
-      "suggestedAction": "Remove the function from the source query or migrate this widget manually."
+      "suggestedAction": "Migrate this widget manually, or remove '.rollup()' from the source query if the default time aggregation is acceptable."
     },
     {
       "code": "OPTION_IGNORED",

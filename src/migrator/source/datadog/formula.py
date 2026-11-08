@@ -2,10 +2,19 @@
 
     expr   := term (("+" | "-") term)*
     term   := factor (("*" | "/") factor)*
-    factor := number | ident | "(" expr ")"
+    factor := number | ident | "abs(" expr ")" | "(" expr ")"
 
 Spaces are allowed between tokens; the full input must be consumed. Anything else
-(functions such as ``top(...)``, unary minus, exponents) is rejected.
+(other functions such as ``top(...)``, unary minus, exponents) is rejected.
+
+``abs(expr)`` (#119) is Datadog's arithmetic function "Graph the absolute value of the
+metric." (https://docs.datadoghq.com/dashboards/functions/arithmetic/#absolute); arithmetic
+functions "apply changes to the returned results of the metric query"
+(https://docs.datadoghq.com/dashboards/functions/). PromQL ``abs(v instant-vector)``
+"returns a vector containing all float samples in the input vector converted to their
+absolute value" (https://prometheus.io/docs/prometheus/latest/querying/functions/#abs).
+Both are pointwise per series, so the translation is exact. The argument must reference a
+query: PromQL ``abs()`` rejects a scalar.
 """
 
 from __future__ import annotations
@@ -33,7 +42,12 @@ class Bin:
     right: Formula
 
 
-Formula = Num | Ref | Bin
+@dataclass(frozen=True)
+class Abs:
+    arg: Formula
+
+
+Formula = Num | Ref | Bin | Abs
 
 
 @dataclass(frozen=True)
@@ -136,7 +150,15 @@ class _Parser:
                 or (self.text[self.pos].isascii() and self.text[self.pos].isalnum())
             ):
                 self.pos += 1
-            return Ref(self.text[start : self.pos])
+            name = self.text[start : self.pos]
+            if name == "abs" and self.pos < len(self.text) and self.text[self.pos] == "(":
+                self.pos += 1
+                arg = self.expr()
+                if self.peek() != ")" or not references(arg):
+                    raise _Fail(self.pos)
+                self.pos += 1
+                return Abs(arg)
+            return Ref(name)
         raise _Fail(self.pos)
 
 
@@ -162,6 +184,8 @@ def references(f: Formula) -> list[str]:
         elif isinstance(node, Bin):
             walk(node.left)
             walk(node.right)
+        elif isinstance(node, Abs):
+            walk(node.arg)
 
     walk(f)
     return out
@@ -175,6 +199,9 @@ def _render(f: Formula, compiled: dict[str, RenderedQuery]) -> str:
         return f.value
     if isinstance(f, Ref):
         return f"({compiled[f.name].promql})"
+    if isinstance(f, Abs):
+        arg = compiled[f.arg.name].promql if isinstance(f.arg, Ref) else _render(f.arg, compiled)
+        return f"abs({arg})"
     prec = _PRECEDENCE[f.op]
     left = _render(f.left, compiled)
     if isinstance(f.left, Bin) and _PRECEDENCE[f.left.op] < prec:

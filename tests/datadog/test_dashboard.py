@@ -162,6 +162,15 @@ def test_blocks_unconvertible_formulas_never_emitting_a_partial_series() -> None
     assert errors_by_widget(c) == {"widgets[0]": ["UNSUPPORTED_FORMULA"]}
 
 
+def test_abs_formula_translates_and_query_abs_stays_blocked() -> None:
+    c = compile_body(body(ts(new_req("avg:postgresql.connections{*}", formulas=["abs(query1)"]))))
+    assert c.dashboard is not None and validate_dashboard(c.dashboard) == []
+    assert queries_of(c, "widget-0") == [{"query": f"abs({CONN})"}]
+    c = compile_body(body(ts(new_req("abs(avg:postgresql.connections{*})"))))
+    [d] = [d for d in c.diagnostics if d.severity == "error"]
+    assert (d.code, d.message) == ("UNSUPPORTED_QUERY_FUNCTION", "Function 'abs' is not supported.")
+
+
 def test_formula_uses_only_referenced_queries() -> None:
     c = compile_body(
         body(
@@ -528,3 +537,73 @@ def test_source_paths_sort_by_numeric_index() -> None:
     assert [d.source_path for d in c.diagnostics if d.code == "OPTION_IGNORED"] == [
         f"widgets[0].definition.requests[{k}].style" for k in range(11)
     ]
+
+
+TOP_MESSAGE = (
+    "Function 'top' is not supported: Datadog ranks each series once over its points "
+    "(https://docs.datadoghq.com/dashboards/functions/rank/#top); "
+    "PromQL topk ranks at every step, and the docs leave the ranked window open."
+)
+TOP_ACTION = "Remove top() to convert all series unranked, or migrate this widget manually."
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        *[f"10, '{by}', 'desc'" for by in ("max", "mean", "min", "sum", "last", "l2norm", "area")],
+        "5, 'mean', 'asc'",
+        "20, 'last', 'desc'",  # LIMIT_TO outside the documented 5/10/25/50/100
+        "10",
+        "",
+    ],
+)
+def test_top_blocks_in_queries_and_formulas_with_its_reason(args: str) -> None:
+    """#117: top() ranks over the window, PromQL topk per step; every form blocks."""
+    tail = f", {args}" if args else ""
+    cases = [
+        (
+            {"q": f"top(avg:postgresql.connections{{*}} by {{db}}{tail})"},
+            "UNSUPPORTED_QUERY_FUNCTION",
+            "widgets[0].definition.requests[0].q",
+        ),
+        (
+            new_req("avg:postgresql.connections{*} by {db}", formulas=[f"top(query1{tail})"]),
+            "UNSUPPORTED_FORMULA",
+            "widgets[0].definition.requests[0].formulas[0].formula",
+        ),
+        (
+            new_req(
+                "avg:postgresql.connections{*} by {db}", formulas=[f"top(query1 / 1000{tail})"]
+            ),
+            "UNSUPPORTED_FORMULA",
+            "widgets[0].definition.requests[0].formulas[0].formula",
+        ),
+    ]
+    for req, code, path in cases:
+        c = compile_body(body(ts(req)))
+        assert c.dashboard is None
+        assert [i.outcome for i in c.items if i.kind == "widget"] == ["blocked"]
+        [d] = [d for d in c.diagnostics if d.severity == "error"]
+        assert (d.code, d.source_path, d.message, d.suggested_action) == (
+            code,
+            path,
+            TOP_MESSAGE,
+            TOP_ACTION,
+        )
+
+
+def test_other_wrapping_functions_keep_the_generic_message() -> None:
+    c = compile_body(body(ts({"q": "per_second(avg:postgresql.connections{*})"})))
+    [d] = [d for d in c.diagnostics if d.severity == "error"]
+    assert (d.code, d.message) == (
+        "UNSUPPORTED_QUERY_FUNCTION",
+        "Function 'per_second' is not supported.",
+    )
+    c = compile_body(
+        body(ts(new_req("avg:postgresql.connections{*}", formulas=["cumsum(query1)"])))
+    )
+    [d] = [d for d in c.diagnostics if d.severity == "error"]
+    assert (d.code, d.message) == (
+        "UNSUPPORTED_FORMULA",
+        "Formula syntax is not supported at offset 6.",
+    )

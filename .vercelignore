@@ -1,0 +1,7 @@
+.venv
+.claude
+.github
+docs
+tests
+scripts
+.env.local

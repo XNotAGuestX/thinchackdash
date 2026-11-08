@@ -37,3 +37,5 @@ private-input/
 
 # Local run artifacts (test report, convert output)
 out/
+.vercel
+.env.local

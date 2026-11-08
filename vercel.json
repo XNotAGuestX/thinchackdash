@@ -1,11 +1,18 @@
 {
-  "buildCommand": "",
-  "outputDirectory": "preview",
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "{backend,src,mappings,fixtures/datadog/integrations-core/postgres}/**",
-      "maxDuration": 60
-    }
-  },
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": ["backend/**", "src/**", "mappings/**", "fixtures/datadog/integrations-core/postgres/**"],
+        "maxDuration": 60
+      }
+    },
+    { "src": "preview/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/", "dest": "/preview/index.html" },
+    { "src": "/(.*)", "dest": "/preview/$1" }
+  ]
 }

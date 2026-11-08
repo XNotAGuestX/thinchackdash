@@ -1,6 +1,6 @@
 # Shared project status
 
-Last updated: 2026-11-08: on-demand comparison harness implemented on branch `146-live-comparison`; real two-vendor evidence recorded (4/6 cases within 3%). Review is pending; the two connection-value failures are tracked in #148. Open work: the orchestrator handoff [`handoff/README.md`](handoff/README.md) (epic #104, live-Datadog horizon #122 and implementation #146). Work is tracked in [issues](https://github.com/XNotAGuestX/thinchackdash/issues) and on the [project board](https://github.com/users/XNotAGuestX/projects/3).
+Last updated: 2026-11-08: expanded 28-case live infrastructure smoke completed on `157-live-integrations` (9 passed, 19 failed at 3%); retained stream remains running. PR #159 is stacked on pending remark-outcome PR #156. Earlier connection sampling investigation remains #148. Open work: the orchestrator handoff [`handoff/README.md`](handoff/README.md) (epic #104, live-Datadog horizon #122 and implementation #146). Work is tracked in [issues](https://github.com/XNotAGuestX/thinchackdash/issues) and on the [project board](https://github.com/users/XNotAGuestX/projects/3).
 
 2026-11-08 update ([#146](https://github.com/XNotAGuestX/thinchackdash/issues/146), branch
 `146-live-comparison`): on-demand comparison harness implemented with independent workload
@@ -31,10 +31,73 @@ Highest-priority requirement: deterministic conversion before all other objectiv
 | Mappings | `postgres`, `kafka`, `docker`, `redis`, `nginx`; every entry `reviewed: null` | `mappings/datadog/`; Redis/nginx notes in `REVIEW-redis-nginx.md` |
 | Oracle cases | 9 integrations-core dashboards, 207 requests; Agent0 proposals plus the deterministic rules in `scripts/build_expected.py`; none human-reviewed, so they skip by default | `fixtures/expected/*/*/expected.yaml`; `uv run pytest --include-unreviewed` |
 | Dash0 | Import contract checked live; Postgres dashboards and the disabled check rule published and read back | Sections below; sanitized responses in `fixtures/dash0/live-2026-11-07/` |
-| Live comparison | Real shared-sample run completed: 4/6 numeric cases pass at 3%; connection values differ by 3.2787%; both imported assets read back | Results below; follow-up #148 |
+| Live comparison | Expanded short smoke: 9/28 numeric cases pass at 3%, 19 fail; all seven assets read back. Earlier default run: 4/6 pass | Expanded results below; PR #159 and #148 |
 | Telemetry | On-demand run recorded 2026-11-08 02:32–02:42 UTC in `default`; its stack is stopped. Older demo inventory is historical | [`DASH0_INVENTORY.md`](DASH0_INVENTORY.md); live evidence below |
-| Automated checks | Green on branch `146-live-comparison`: `uv run migrator check` (ruff, mypy --strict, pytest) | 781 passed, 621 skipped (unreviewed oracle cases); uv-managed Python and locked dependencies |
+| Automated checks | Green on branch `157-live-integrations`: `uv run migrator check` (ruff, mypy --strict, pytest) | 821 passed, 621 skipped; uv-managed Python and locked dependencies |
 | Submission | Not started | #2; steps in `handoff/README.md`, "Human-only items" (only on the user's request) |
+
+## Expanded live infrastructure smoke (2026-11-08)
+
+Felix requested broader integrations, assumed/approximated coverage, and retained telemetry.
+Implemented on `157-live-integrations`, stacked on pending PR #156; review is [PR #159](https://github.com/XNotAGuestX/thinchackdash/pull/159).
+The isolated shared stream `demo-live-4c447ebf85d1` remains running in demo dataset `default`.
+Its startup returned without a measurement wait. The comparison reused its completed
+**03:32–03:34 UTC** window (two 60-second buckets), with no collection sleep.
+
+**Result: 9 passed, 19 failed; exit 2.** The default relative tolerance remains 3%, and
+all expected series and finite samples are required. This is a short smoke, not evidence
+of parity over a longer representative workload. The original default suite retains its
+ten-minute measurement. No failing case was removed, tolerance widened, or input repaired.
+
+| Conversion category | Passed | Failed |
+|---|---:|---:|
+| Exact (`translated`) | 6 | 15 |
+| `assumed` | 1 | 4 |
+| `approximated` | 2 | 0 |
+
+Passing cases: PostgreSQL connections (1.36986%), PostgreSQL locks (`SEMANTIC`, 0%),
+Redis memory (0.12177%), Redis clients (0%), Redis fragmentation (0.10987%), Redis
+maxmemory (both zero, explicitly allowed), Redis pinned memory (`TIMEPIN`, 0.12177%),
+Kafka offline partitions (both zero, explicitly allowed), and the disabled PostgreSQL
+monitor (`FULLWINDOW`, `NEWHOST`, 1.08696%; both threshold decisions agree).
+
+Ten failures have missing data or unequal series sets: PostgreSQL total size, NGINX
+requests/dropped connections, Kafka network input, host available memory/disk utilization,
+and all four Docker cases (running count, memory cache, network receive, CPU user).
+Nine have numeric differences: PostgreSQL row rate (20.75387%), PostgreSQL top connections
+(`TOPN`, one database differs 4.00001%), Redis keys (7.30868%), NGINX connections (3.86740%),
+Kafka consumer offset (12.76596%) and lag (100%), host load (10.21768%), CPU user (23.39468%)
+and total memory (99.99955%). Causes are not established by this run; aggregation/sampling,
+Datadog Combined alias availability, units and source scope require separate investigation
+in [#161](https://github.com/XNotAGuestX/thinchackdash/issues/161).
+
+All **six dashboards and one disabled check** were API accepted and read back successfully:
+
+| Asset | Recorded destination ID |
+|---|---|
+| `check-rules/live-infrastructure-approximated-connections.json` | `45b33add-bef0-4a5b-882f-448e79afc049` |
+| `dashboards/live-infrastructure-docker.json` | `23a25ac8-09a3-40d5-b064-91e3d53c8395` |
+| `dashboards/live-infrastructure-host.json` | `2d56507b-9a1e-4548-aacd-f666a5d7d9c2` |
+| `dashboards/live-infrastructure-kafka.json` | `4d2aaf59-df86-41b4-b9be-f332c1320a26` |
+| `dashboards/live-infrastructure-nginx.json` | `d882b542-8673-4591-899c-491237fbad49` |
+| `dashboards/live-infrastructure-postgres.json` | `7f1de401-f3f7-4b4d-a046-e8be988aa788` |
+| `dashboards/live-infrastructure-redis.json` | `27633fb2-23ed-4cd2-8af4-18105248435a` |
+
+The PostgreSQL dashboard includes `BarChart`; API acceptance/read-back does not establish
+that Dash0 renders that plugin. Numeric passes do not establish the `SEMANTIC` assumption,
+ignored `TIMEPIN`, top-N behavior or monitor grace/full-window behavior. All tagged cases
+retain `remarkBehaviorValidation: not_run`; checks were never enabled.
+
+Private evidence: `out/live/infrastructure-01/comparison.json` and `.md` in the isolated
+worktree; a copy is available at the original workspace's ignored
+`out/live/infrastructure-157-20261108/`. Stop command and stream usage are in
+[LIVE_COMPARE.md](LIVE_COMPARE.md#reuse-a-running-stream). Destination assets are retained.
+
+Offline verification: `uv run migrator check` passed (ruff, strict mypy, **821 passed,
+621 skipped**). Explicit script lint and strict mypy passed. The infrastructure dry-run
+has 28 cases, zero blocked. The separately requested proposed-oracle diagnostic run had
+**690 passed, 193 failed** (PostgreSQL 57, Redis 40, Kafka 38, NGINX 36, Docker 22); these
+are unreviewed expectations, not 193 established converter defects. Details are on #96.
 
 ## Live shared-sample comparison (2026-11-08)
 

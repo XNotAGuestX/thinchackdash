@@ -117,6 +117,9 @@ a measurement wait and reuses completed historical windows for subsequent suites
 infrastructure suite is a two-minute smoke at the unchanged 3% tolerance; the original
 default suite keeps its ten-minute window. Live numeric parity does not certify the tagged
 behavior differences. See [LIVE_COMPARE.md](../LIVE_COMPARE.md#reuse-a-running-stream).
+The real short run finished **9 passed / 19 failed** at 3%; all seven assets read back.
+The stream remains running. Exact evidence is in [STATUS.md](../STATUS.md#expanded-live-infrastructure-smoke-2026-11-08);
+failure triage is [#161](https://github.com/XNotAGuestX/thinchackdash/issues/161).
 
 ## Open decisions and blockers
 

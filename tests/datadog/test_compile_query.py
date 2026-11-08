@@ -66,7 +66,7 @@ def test_compiles_tag_filters_into_matchers() -> None:
 
 def test_blocking_checks() -> None:
     cases = {
-        "avg:postgresql.connections{*}.rollup(max)": "UNSUPPORTED_QUERY_FUNCTION",
+        "avg:postgresql.connections{*}.rollup(median)": "UNSUPPORTED_QUERY_FUNCTION",
         "avg:system.io.util{$scope}": "MISSING_METRIC_MAPPING",
         "avg:postgresql.connections{*} by {table}": "MISSING_LABEL_MAPPING",
         "avg:postgresql.connections{table:x}": "MISSING_LABEL_MAPPING",
@@ -80,11 +80,10 @@ def test_blocking_checks() -> None:
 
 
 ROLLUP_BLOCK = (
-    "Query function '.rollup()' is blocked: Datadog aligns rollup buckets to UNIX time and "
-    "picks the default interval per graph (https://docs.datadoghq.com/dashboards/functions/"
-    "rollup/); a PromQL '<agg>_over_time' window per dashboard step does not reproduce them.",
-    "Migrate this widget manually, or remove '.rollup()' from the source query if the default "
-    "time aggregation is acceptable.",
+    "Unsupported '.rollup()' arguments: use avg, sum, min, max or count with an optional "
+    "integer interval from 1 to 86400 seconds "
+    "(https://docs.datadoghq.com/dashboards/functions/rollup/).",
+    "Use a supported fixed-duration rollup form or migrate this query manually.",
 )
 FILL_BLOCK = (
     "Query function '.fill()' is blocked: PromQL has no equivalent of Datadog's gap "
@@ -95,15 +94,12 @@ FILL_BLOCK = (
 )
 
 
-def test_rollup_and_fill_block_every_argument_form_with_a_documented_reason() -> None:
-    # #120: documented forms, the pinned dashboards' forms (`.rollup(max)`, `.rollup(10)`,
-    # `.fill(0)`, `.fill(60)`) and a chain all block; nothing is dropped or translated.
+def test_unsupported_rollup_and_fill_forms_keep_documented_reasons() -> None:
     cases = {
-        "rollup(avg)": ROLLUP_BLOCK,
-        "rollup(max)": ROLLUP_BLOCK,
-        "rollup(sum, 120)": ROLLUP_BLOCK,
-        "rollup(10)": ROLLUP_BLOCK,
-        "rollup(max).fill(zero)": ROLLUP_BLOCK,
+        "rollup(median)": ROLLUP_BLOCK,
+        "rollup(avg, 0)": ROLLUP_BLOCK,
+        "rollup(avg, 86401)": ROLLUP_BLOCK,
+        "rollup(avg, daily)": ROLLUP_BLOCK,
         "fill(zero)": FILL_BLOCK,
         "fill(last, 300)": FILL_BLOCK,
         "fill(null)": FILL_BLOCK,
@@ -122,29 +118,19 @@ LOAD = entry(target={"name": "system.cpu.load_average.1m", "type": "gauge"}, lab
 LOAD_SEL = '{otel_metric_name="system.cpu.load_average.1m", otel_metric_type="gauge"}'
 
 
-def test_weighted_blocks_in_every_form() -> None:
-    # Pinned Kafka queries, an argument, a non-sum aggregator, after another function (#116).
+def test_weighted_rejects_arguments_non_sum_and_chains() -> None:
     for text in (
-        "sum:kafka.replication.offline_partitions_count{*}.weighted()",
-        "sum:kafka.producer.bytes_out{$env} by {topic,env}.weighted()",
         "sum:postgresql.connections{*}.weighted(1)",
         "avg:postgresql.connections{*}.weighted()",
+        "postgresql.connections{*}.weighted()",
         "sum:postgresql.connections{*}.rollup(avg, 60).weighted()",
+        "sum:postgresql.connections{*}.weighted().rollup(avg, 60)",
+        "sum:postgresql.connections{*}.weighted().unknown()",
     ):
-        r = run(text, variables=[TemplateVariable("env", "env", "*")])
+        r = run(text)
         assert isinstance(r, CompiledError), text
         assert codes(r) == ["UNSUPPORTED_QUERY_FUNCTION"], text
-        diag = r.diagnostics[0]
-        assert diag.message == (
-            "Query function '.weighted()' is not supported: Datadog weights each series by the "
-            "metric's submission interval from its Metrics Catalog, which the query does not "
-            "carry (https://docs.datadoghq.com/dashboards/guide/how-weighted-works/)."
-        ), text
-        assert diag.suggested_action == (
-            "Migrate this widget manually; removing '.weighted()' changes the sum whenever tag "
-            "values churn."
-        ), text
-    # The documented `sum:(<metric>{*}).weighted()` form is outside the parser's grammar.
+        assert r.diagnostics[0].severity == "error"
     parsed = parse_metric_query("sum:(kafka.net.bytes_in.rate{*}).weighted()")
     assert isinstance(parsed, ParseError) and parsed.code == "UNSUPPORTED_QUERY_SYNTAX"
 

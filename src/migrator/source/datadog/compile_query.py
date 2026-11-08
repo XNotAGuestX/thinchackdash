@@ -3,7 +3,8 @@
 Check order (the first blocking failure returns ``CompiledError`` with the warnings
 collected so far plus that error):
 
-1. any query function            -> UNSUPPORTED_QUERY_FUNCTION
+1. unsupported function/args     -> UNSUPPORTED_QUERY_FUNCTION
+   supported approximation      -> BEST_EFFORT with its approved reason tag
 2. no space aggregator           -> DEFAULT_AGGREGATOR_APPLIED (warning, continue with avg)
 3. metric not in the mapping     -> MISSING_METRIC_MAPPING
 4. entry not reviewed            -> UNREVIEWED_MAPPING (warning, continue)
@@ -37,7 +38,7 @@ from migrator.source.datadog.mapping import (
     GaugeMapping,
     RateMapping,
 )
-from migrator.source.datadog.model import MetricQuery, SpaceAggregator, TagFilter
+from migrator.source.datadog.model import MetricQuery, QueryFunction, SpaceAggregator, TagFilter
 from migrator.source.datadog.remarks import approved
 from migrator.target import Diagnostic, DiagnosticCode, Severity
 
@@ -47,22 +48,12 @@ DEFAULT_AGGREGATOR_DOC = "https://docs.datadoghq.com/dashboards/querying/#aggreg
 ROLLUP_DOC = "https://docs.datadoghq.com/dashboards/functions/rollup/"
 FILL_DOC = "https://docs.datadoghq.com/dashboards/functions/interpolation/#fill"
 
-# Functions that block with a documented reason (#120): name -> (message, suggested action).
-# `.rollup(<AGGREGATOR>, <INTERVAL>)` (ROLLUP_DOC): "The start and end of rollup intervals are
-# aligned to UNIX time", and "The default rollup time interval varies depending on how the data is
-# visualized." `<agg>_over_time(x[<range>])` is a window ending at each Perses step instead, so the
-# buckets differ; a fixed `<INTERVAL>` range would also break the `$__rate_interval`-only rule.
-# `.fill(<METHOD>, <LIMIT>)` (FILL_DOC): "Interpolate missing metric values" with `linear`, `last`,
-# `zero` or `null`, "LIMIT [optional, default=300, maximum=600]" seconds. PromQL has no gap
-# interpolation, and a numeric method (`.fill(0)` in the pinned dashboards) is undocumented.
-# Every argument form of both blocks.
+# Unsupported variants keep function-specific documentation rather than silently falling back.
 _FUNCTION_BLOCKS: dict[str, tuple[str, str]] = {
     "rollup": (
-        "Query function '.rollup()' is blocked: Datadog aligns rollup buckets to UNIX time and "
-        f"picks the default interval per graph ({ROLLUP_DOC}); a PromQL '<agg>_over_time' window "
-        "per dashboard step does not reproduce them.",
-        "Migrate this widget manually, or remove '.rollup()' from the source query if the "
-        "default time aggregation is acceptable.",
+        "Unsupported '.rollup()' arguments: use avg, sum, min, max or count with an optional "
+        f"integer interval from 1 to 86400 seconds ({ROLLUP_DOC}).",
+        "Use a supported fixed-duration rollup form or migrate this query manually.",
     ),
     "fill": (
         "Query function '.fill()' is blocked: PromQL has no equivalent of Datadog's gap "
@@ -140,27 +131,106 @@ class _Diags:
         return CompiledError(diagnostics=list(self.items))
 
 
-# `.weighted()` stays blocked in every form (#116). Datadog: "The `weighted()` function accounts
-# for the short-lived lifespan of transient, churning tag values when summing gauge metrics in
-# space to prevent artificial spikes"
-# (https://docs.datadoghq.com/dashboards/functions/smoothing/#weighted). The guide weighs each
-# series' rollup by its submission rate: at a 10 s interval, a value of 12 present in 3 of the
-# 6 slots of a 60 s point counts as 6, not 12
-# (https://docs.datadoghq.com/dashboards/guide/how-weighted-works/). The weight needs the metric's
-# submission interval from the Datadog Metrics Catalog, which the query does not carry, and it
-# equals a plain sum only when no series churns, which depends on the data.
+# Datadog weights gauge series by their configured submission interval. That metadata is not
+# in exported queries, so this bounded approximation uses the fullest selected series' sample
+# count as its denominator. It is deliberately BEST_EFFORT, including for stable telemetry.
 WEIGHTED_DOC = "https://docs.datadoghq.com/dashboards/guide/how-weighted-works/"
+TYPE_MODIFIERS_DOC = "https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/"
+_ROLLUP_AGGREGATORS = {"avg", "sum", "min", "max", "count"}
 
 
-def _block_weighted(d: _Diags) -> CompiledError:
-    return d.block(
-        "UNSUPPORTED_QUERY_FUNCTION",
-        "Query function '.weighted()' is not supported: Datadog weights each series by the "
-        "metric's submission interval from its Metrics Catalog, which the query does not carry "
-        f"({WEIGHTED_DOC}).",
-        "Migrate this widget manually; removing '.weighted()' changes the sum whenever tag "
-        "values churn.",
+@dataclass(frozen=True)
+class _FunctionPlan:
+    kind: Literal["weighted", "rollup", "as_rate"]
+    aggregation: str = "avg"
+    window: str = RATE_INTERVAL
+
+
+def _positive_seconds(value: str) -> str | None:
+    # Finite bounded grammar; calendar rollups and enormous/zero/negative ranges are rejected.
+    if len(value) <= 5 and value.isascii() and value.isdigit() and 0 < int(value) <= 86400:
+        return f"{int(value)}s"
+    return None
+
+
+def _function_plan(q: MetricQuery, d: _Diags) -> _FunctionPlan | CompiledError | None:
+    if not q.functions:
+        return None
+    # Changing modifier order can change time-vs-space evaluation. Never silently reorder.
+    if len(q.functions) != 1:
+        return d.block(
+            "UNSUPPORTED_QUERY_FUNCTION",
+            "Chained query modifiers are not supported; their evaluation order is not "
+            "established by the bounded best-effort function implementation.",
+            "Split or migrate this query manually; no modifier has been discarded.",
+        )
+    fn: QueryFunction = q.functions[0]
+    if fn.name == "weighted" and not fn.args and q.aggregator == "sum":
+        return _FunctionPlan("weighted")
+    if fn.name == "as_rate" and not fn.args:
+        return _FunctionPlan("as_rate")
+    if fn.name == "rollup":
+        if len(fn.args) == 1:
+            if fn.args[0] in _ROLLUP_AGGREGATORS:
+                return _FunctionPlan("rollup", aggregation=fn.args[0])
+            window = _positive_seconds(fn.args[0])
+            if window is not None:
+                return _FunctionPlan("rollup", window=window)
+        if len(fn.args) == 2 and fn.args[0] in _ROLLUP_AGGREGATORS:
+            window = _positive_seconds(fn.args[1])
+            if window is not None:
+                return _FunctionPlan("rollup", aggregation=fn.args[0], window=window)
+    message, action = _FUNCTION_BLOCKS.get(
+        fn.name,
+        (
+            f"Query function '.{fn.name}()' or its arguments are not supported. "
+            "weighted() requires explicit sum and no arguments; as_rate() takes no arguments.",
+            "Use a documented supported form or migrate this query manually.",
+        ),
     )
+    return d.block("UNSUPPORTED_QUERY_FUNCTION", message, action)
+
+
+def _approve_function(
+    plan: _FunctionPlan, entry: GaugeMapping | RateMapping | ExpressionMapping, d: _Diags
+) -> CompiledError | None:
+    valid = (
+        isinstance(entry, GaugeMapping)
+        if plan.kind != "as_rate"
+        else isinstance(entry, RateMapping)
+    )
+    if not valid:
+        expected = "rate" if plan.kind == "as_rate" else "gauge"
+        return d.block(
+            "UNSUPPORTED_QUERY_FUNCTION",
+            f"'.{plan.kind}()' requires a '{expected}' metric mapping; expressions and "
+            "other metric kinds lack the raw series semantics required by this implementation.",
+            "Use a reviewed mapping of the documented metric kind or migrate manually.",
+        )
+    tag = {"weighted": "WEIGHTED", "rollup": "ROLLUP", "as_rate": "ASRATE"}[plan.kind]
+    remark = approved(tag)
+    if remark is None:
+        return d.block(
+            "UNSUPPORTED_QUERY_FUNCTION",
+            f"Best-effort {plan.kind} conversion awaits approval of {tag}.",
+            "Review the documented approximation before converting this query.",
+        )
+    detail = (
+        f" Window={plan.window}; denominator=max sample count across all selected raw series."
+        if plan.kind == "weighted"
+        else f" Window={plan.window}; reducer={plan.aggregation}."
+        if plan.kind == "rollup"
+        else ""
+    )
+    d.add(
+        "BEST_EFFORT",
+        "warning",
+        f"{tag}: {remark.summary}{detail}",
+        "Verify the source and target numerically on representative telemetry; "
+        "no global error bound is guaranteed.",
+        remark=tag,
+    )
+    return None
 
 
 def compile_metric_query(
@@ -168,18 +238,9 @@ def compile_metric_query(
 ) -> CompiledQuery:
     d = _Diags(ctx)
 
-    if any(fn.name == "weighted" for fn in q.functions):
-        return _block_weighted(d)
-    if q.functions:
-        name = q.functions[0].name
-        message, action = _FUNCTION_BLOCKS.get(
-            name,
-            (
-                f"Query function '.{name}()' is not supported.",
-                "Remove the function from the source query or migrate this widget manually.",
-            ),
-        )
-        return d.block("UNSUPPORTED_QUERY_FUNCTION", message, action)
+    plan = _function_plan(q, d)
+    if isinstance(plan, CompiledError):
+        return plan
     aggregator = q.aggregator
     if aggregator is None:
         aggregator = DEFAULT_AGGREGATOR
@@ -205,6 +266,10 @@ def compile_metric_query(
             f"No mapping for metric '{q.metric}'.",
             f"Add a reviewed entry for '{q.metric}' to the mapping file.",
         )
+    if plan is not None:
+        failure = _approve_function(plan, entry, d)
+        if failure is not None:
+            return failure
     if entry.assumption is not None:
         tag = entry.assumption
         remark = approved(tag)
@@ -318,7 +383,7 @@ def compile_metric_query(
         body = entry.expression.replace("$filters", filters)
         expr = render_aggregation(aggregator, group_labels, body)
     else:
-        expr = _render_metric(entry, aggregator, group_labels, matchers, ctx.offset_seconds)
+        expr = _render_metric(entry, aggregator, group_labels, matchers, ctx.offset_seconds, plan)
 
     if entry.scale != 1:
         expr = f"({expr}) * {format_number(entry.scale)}"
@@ -331,12 +396,20 @@ def _render_metric(
     group_labels: list[str],
     matchers: list[Matcher],
     offset_seconds: int = 0,
+    plan: _FunctionPlan | None = None,
 ) -> str:
     fixed = [Matcher(label, value) for label, value in sorted(entry.matchers.items())]
     inner = render_selector(MetricRef(entry.target.name, entry.target.type), matchers + fixed)
     offset = f" offset {format_offset(offset_seconds)}" if offset_seconds else ""
     if isinstance(entry, RateMapping):
         inner = f"rate({inner}[{entry.rateWindow or RATE_INTERVAL}]{offset})"
+    elif plan is not None and plan.kind == "weighted":
+        samples = f"{inner}[{plan.window}]{offset}"
+        # sum_over_time/count_max = average * series_count/count_max. Weight raw sample
+        # presence before grain deduplication, otherwise PromQL lookback invents persistence.
+        inner = f"sum_over_time({samples}) / scalar(max(count_over_time({samples})))"
+    elif plan is not None and plan.kind == "rollup":
+        inner = f"{plan.aggregation}_over_time({inner}[{plan.window}]{offset})"
     else:
         inner += offset
     if entry.grain is not None:

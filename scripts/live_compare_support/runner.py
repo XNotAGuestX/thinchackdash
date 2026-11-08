@@ -15,6 +15,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -34,7 +35,7 @@ from live_compare_support.config import (
     save_json,
 )
 from live_compare_support.credentials import load_environment, read_query_config
-from live_compare_support.environment import Environment
+from live_compare_support.environment import Environment, collector_config
 from live_compare_support.queries import (
     BoundQuery,
     pair,
@@ -74,7 +75,7 @@ def artifact(root: Path, case: Case) -> tuple[str, Any, Any]:
     ]
     if len(sources) != 1:
         raise InputError(f"case {case.id}: sourceId is missing or ambiguous")
-    # Converted with remarks still compares: the data comparison is what checks the remark.
+    # Tagged artifacts participate in numeric parity; behavior equivalence is separate.
     if len(entries) != 1 or entries[0]["outcome"] not in CONVERTED:
         raise DataError(
             f"case {case.id}: conversion is blocked or partial; inspect compiled/report.json"
@@ -91,6 +92,13 @@ def artifact(root: Path, case: Case) -> tuple[str, Any, Any]:
 
 def bind_case(root: Path, case: Case, suite: Suite, run_id: str) -> tuple[str, BoundQuery]:
     path, source, target = artifact(root, case)
+    outcome, remarks = conversion_details(root, case)
+    if case.expected_outcome is not None and outcome != case.expected_outcome:
+        raise DataError(f"case {case.id}: expected {case.expected_outcome}, got {outcome}")
+    if case.expected_remarks is not None and sorted(remarks) != sorted(case.expected_remarks):
+        raise DataError(
+            f"case {case.id}: expected remark tags {case.expected_remarks}, got {remarks}"
+        )
     try:
         bound = pair(case, source, target, suite.rate_interval, run_id)
     except (KeyError, IndexError, TypeError, ValueError) as err:
@@ -102,6 +110,28 @@ def bind_case(root: Path, case: Case, suite: Suite, run_id: str) -> tuple[str, B
     ):
         raise InputError("monitor window must align to step and fit within warm-up")
     return path, bound
+
+
+def conversion_details(root: Path, case: Case) -> tuple[str, list[str]]:
+    source_path = (
+        case.request.rsplit("/definition/requests/", 1)[0]
+        .strip("/")
+        .replace("/definition/", ".definition.")
+        if case.kind == "dashboard"
+        else ""
+    )
+    source_path = re.sub(r"widgets/(\d+)", r"widgets[\1]", source_path)
+    source_path = source_path.replace("/", ".")
+    matches = [
+        item
+        for item in read_json(root / "report.json")["items"]
+        if item["sourceId"] == case.source
+        and item["kind"] == ("widget" if case.kind == "dashboard" else "monitor")
+        and item["sourcePath"] == source_path
+    ]
+    if len(matches) != 1:
+        raise DataError(f"case {case.id}: missing conversion outcome")
+    return matches[0]["outcome"], matches[0].get("remarks", [])
 
 
 def validate_readback(expected: Any, actual: Any, kind: str, prefix: str) -> bool:
@@ -146,9 +176,15 @@ def read_assets(
     entries = {e["path"]: e for e in read_json(root / "manifest.json")["entries"]}
     for receipt in load_receipts(root):
         if receipt.status != "imported" or not receipt.id:
-            raise RuntimeError(
-                "publication has a failed/unknown receipt; reconcile before resuming"
+            evidence.append(
+                {
+                    "path": receipt.path,
+                    "id": receipt.id,
+                    "readback": "not_run",
+                    "publication": receipt.status,
+                }
             )
+            continue
         if (receipt.api_url, receipt.dataset, receipt.name_prefix) != (
             cfg.api_url,
             cfg.dataset,
@@ -158,7 +194,11 @@ def read_assets(
         kind = entries[receipt.path]["kind"]
         if kind not in ("dashboard", "check-rule"):
             raise InputError("unexpected receipt kind")
-        actual = read_back(kind, receipt.id, cfg, send)
+        try:
+            actual = read_back(kind, receipt.id, cfg, send)
+        except RuntimeError:
+            evidence.append({"path": receipt.path, "id": receipt.id, "readback": "error"})
+            continue
         valid = validate_readback(read_json(root / receipt.path), actual, kind, prefix)
         evidence.append(
             {"path": receipt.path, "id": receipt.id, "readback": "passed" if valid else "failed"}
@@ -228,12 +268,15 @@ def write_evidence(out: Path, report: dict[str, Any]) -> None:
         "",
         f"Dataset: `{report['dataset']}`; run: `{report['runId']}`",
         "",
-        "| Case | Result | Details |",
-        "|---|---|---|",
+        "| Case | Conversion | Remarks | Result | Details |",
+        "|---|---|---|---|---|",
     ]
     for case in report["cases"]:
         detail = case.get("error", f"{len(case.get('series', []))} matched series")
-        lines.append(f"| {case['id']} | {case['status']} | {detail.replace('|', '/')} |")
+        lines.append(
+            f"| {case['id']} | {case.get('conversionOutcome', '')} | "
+            f"{','.join(case.get('remarks', []))} | {case['status']} | {detail.replace('|', '/')} |"
+        )
     if report.get("window"):
         lines.extend(["", f"UTC Unix-second window: `{report['window']}`."])
     for case in report["cases"]:
@@ -309,6 +352,28 @@ def fingerprint(
     return hashlib.sha256(b"\0".join(parts)).hexdigest()
 
 
+def stream_fingerprint(
+    workload: Workload, profile: Path, dataset: str, env: Mapping[str, str]
+) -> str:
+    """Bind a stream to its workload/exporters, independently of test-suite selection."""
+    values = [
+        workload.model_dump(),
+        collector_config(workload, "demo-live-fingerprint"),
+        dataset,
+        env.get("DD_SITE"),
+        env.get("DASH0_API_URL"),
+        env.get("DASH0_OTLP_ENDPOINT"),
+    ]
+    parts = [
+        json.dumps(values, sort_keys=True).encode(),
+        (ROOT / "scripts/live/images.lock.json").read_bytes(),
+    ]
+    parts.extend(resolve(profile, p).read_bytes() for p in workload.seed_sql)
+    if workload.feature_flags:
+        parts.append(resolve(profile, workload.feature_flags).read_bytes())
+    return hashlib.sha256(b"\0".join(parts)).hexdigest()
+
+
 def execute(
     args: argparse.Namespace,
     env: Mapping[str, str],
@@ -329,7 +394,7 @@ def execute(
     if not chosen <= {c.id for c in suite.cases}:
         raise InputError("unknown --case id")
     cases = [c for c in suite.cases if c.id in chosen]
-    with tempfile.TemporaryDirectory(prefix="live-compare-") as temp:
+    with tempfile.TemporaryDirectory(prefix="live-compare-") as temp, ExitStack() as resources:
         scratch = Path(temp) / "compiled"
         compile_suite(suite, args.tests, scratch)
         blocked: list[dict[str, Any]] = []
@@ -362,6 +427,99 @@ def execute(
                 raise InputError(
                     f"{name} must be an explicit HTTPS endpoint without credentials/query"
                 )
+        stream = None
+        if args.start_stream or args.stop_stream or args.stream_dir:
+            if args.stream_dir is None:
+                raise InputError("stream operations require --stream-dir")
+            stream_dir = args.stream_dir.resolve()
+            stream_dir.mkdir(parents=True, exist_ok=True)
+            stream_lock = resources.enter_context((stream_dir / ".lock").open("w"))
+            try:
+                fcntl.flock(stream_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise InputError("another process owns this stream") from None
+            stream_path = stream_dir / "stream.json"
+            stream_digest = stream_fingerprint(workload, args.dataset_config, cfg.dataset, run_env)
+            if stream_path.exists():
+                stream = read_json(stream_path)
+                if stream.get("configDigest") != stream_digest and not args.stop_stream:
+                    if args.start_stream and stream.get("status") == "stopped":
+                        stream["configDigest"] = stream_digest
+                    else:
+                        raise InputError(
+                            "stream workload/destination changed; stop it before restarting"
+                        )
+                if not re.fullmatch(r"demo-live-[a-f0-9]{12}", stream.get("runId", "")):
+                    raise InputError("invalid saved stream identifier")
+            elif not args.start_stream:
+                raise InputError("stream is missing; use --start-stream first")
+            else:
+                if any(p.name != ".lock" for p in stream_dir.iterdir()):
+                    raise InputError("stream directory contains unrelated files")
+                stream = {
+                    "runId": "demo-live-" + uuid.uuid4().hex[:12],
+                    "configDigest": stream_digest,
+                    "status": "starting",
+                }
+                save_json(stream_path, stream)
+            stream_environment = make_environment(
+                stream_dir / "runtime", workload, args.dataset_config, stream["runId"], run_env
+            )
+            if args.stop_stream:
+                stream_environment.stop()
+                stream["status"] = "stopped"
+                save_json(stream_path, stream)
+                print("Telemetry stream stopped", flush=True)
+                return 0
+            if args.start_stream:
+                if stream.get("status") == "running":
+                    if not stream_environment.healthy():
+                        raise DataError("retained stream is unhealthy; stop it before restarting")
+                    print(f"Telemetry stream already running: {stream['runId']}", flush=True)
+                    return 0
+                if not run_env.get("DD_API_KEY", "").strip():
+                    raise InputError("DD_API_KEY is required for telemetry ingestion")
+                validate_ingestion_key(run_env["DD_API_KEY"].strip(), dd, send)
+                # Query authentication is checked before starting an exporter.
+                if not cases or blocked:
+                    raise DataError("stream startup suite must have no blocked cases")
+                _, probe = bind_case(scratch, cases[0], suite, stream["runId"])
+                probe = with_semantic_mode(probe, args.datadog_semantic_mode)
+                end_probe = int(now()) // suite.step_seconds * suite.step_seconds
+                query_source(
+                    probe, end_probe - suite.step_seconds, end_probe, suite.step_seconds, dd, send
+                )
+                query_target(
+                    probe, end_probe - suite.step_seconds, end_probe, suite.step_seconds, cfg, send
+                )
+                try:
+                    stream_environment.stop()
+                    stream_environment.prepare()
+                    stream_environment.start()
+                    stream.update(status="running", startedAt=now())
+                    save_json(stream_path, stream)
+                except BaseException:
+                    stream_environment.stop()
+                    stream["status"] = "stopped"
+                    save_json(stream_path, stream)
+                    raise
+                print(
+                    f"Telemetry stream running: {stream['runId']}; "
+                    "startup does not wait for a measurement window",
+                    flush=True,
+                )
+                return 0
+            if stream.get("status") != "running" or not stream_environment.healthy():
+                raise DataError(
+                    "retained stream is stopped or unhealthy; start a healthy stream first"
+                )
+            end = int(now() - suite.settle_seconds) // suite.step_seconds * suite.step_seconds
+            start = end - suite.window_seconds
+            if start - suite.warmup_seconds < stream["startedAt"]:
+                raise DataError(
+                    "stream has insufficient history; leave it running and retry "
+                    "(no wait performed)"
+                )
         digest = fingerprint(
             workload, suite, args.dataset_config, scratch, cfg.dataset, run_env, sorted(chosen)
         )
@@ -390,12 +548,27 @@ def execute(
                 if any(p.name != ".lock" for p in out.iterdir()):
                     raise InputError("output directory is not a live comparison run")
                 state = {
-                    "runId": "demo-live-" + uuid.uuid4().hex[:12],
+                    "runId": stream["runId"] if stream else "demo-live-" + uuid.uuid4().hex[:12],
                     "configDigest": digest,
                     "collectionComplete": False,
                     "publicationInFlight": False,
                 }
+                if stream:
+                    state.update(
+                        start=start,
+                        end=end,
+                        collectionComplete=True,
+                        streamDir=str(args.stream_dir.resolve()),
+                        namePrefix="demo-live-" + uuid.uuid4().hex[:12] + "-",
+                    )
                 save_json(state_path, state)
+            if stream and (
+                state.get("streamDir") != str(args.stream_dir.resolve())
+                or state["runId"] != stream["runId"]
+            ):
+                raise InputError("saved comparison belongs to another stream")
+            if not stream and state.get("streamDir"):
+                raise InputError("saved comparison requires its --stream-dir")
             compiled = out / "compiled"
             if not compiled.exists():
                 import shutil
@@ -412,14 +585,18 @@ def execute(
             environment = make_environment(
                 out / "runtime", workload, args.dataset_config, run_id, run_env
             )
+            prefix = state.get("namePrefix", run_id + "-")
             report: dict[str, Any] = {
                 "version": 1,
                 "runId": run_id,
                 "dataset": cfg.dataset,
                 "status": "failed",
                 "assets": [],
-                "cases": blocked,
+                "cases": list(blocked),
                 "querySettings": {"datadogSemanticModeOverride": args.datadog_semantic_mode},
+                "stream": {"runId": stream["runId"], "startedAt": stream["startedAt"]}
+                if stream
+                else None,
             }
             operational_error = False
             try:
@@ -484,17 +661,19 @@ def execute(
                 state["publicationInFlight"] = True
                 save_json(state_path, state)
                 published = run_publish(
-                    PublishOptions(str(compiled), name_prefix=run_id + "-"), run_env, send
+                    PublishOptions(str(compiled), name_prefix=prefix), run_env, send
                 )
                 state["publicationInFlight"] = False
                 save_json(state_path, state)
                 report["publicationExitCode"] = published.exit_code
                 report["conversionSummary"] = read_json(compiled / "report.json")["summary"]
                 if published.exit_code == 1:
-                    raise RuntimeError(
-                        "publication failed or is ambiguous; inspect local import-results.json"
+                    operational_error = True
+                    report["error"] = (
+                        "some publications failed or are ambiguous; inspect import-results.json; "
+                        "only successfully read-back assets are compared"
                     )
-                remote, report["assets"] = read_assets(compiled, cfg, run_id + "-", send)
+                remote, report["assets"] = read_assets(compiled, cfg, prefix, send)
                 times = list(range(state["start"], state["end"], suite.step_seconds))
                 for case in cases:
                     if case.id in {b["id"] for b in blocked}:
@@ -505,6 +684,11 @@ def execute(
                         "relativeTolerancePct": case.relative_tolerance_pct,
                         "absoluteTolerance": case.absolute_tolerance,
                     }
+                    outcome, remarks = conversion_details(compiled, case)
+                    result.update(conversionOutcome=outcome, remarks=remarks)
+                    result["validationScope"] = "shared_sample_numeric_parity"
+                    if remarks:
+                        result["remarkBehaviorValidation"] = "not_run"
                     try:
                         path, _ = bind_case(compiled, case, suite, run_id)
                         if path not in remote:
@@ -560,7 +744,8 @@ def execute(
                 report["status"] = (
                     "passed"
                     if (
-                        published.exit_code == 0
+                        published.exit_code in (0, 2)
+                        and not blocked
                         and all(c["status"] == "passed" for c in report["cases"])
                         and all(a["readback"] == "passed" for a in report["assets"])
                     )
@@ -573,7 +758,7 @@ def execute(
                 )
                 print(f"error: {report['error']}", flush=True)
             finally:
-                if not args.keep_running:
+                if not args.keep_running and not stream:
                     try:
                         environment.stop()
                         report["containers"] = "stopped"
@@ -602,6 +787,18 @@ def main(
     parser.add_argument("--case", action="append")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--keep-running", action="store_true")
+    parser.add_argument(
+        "--stream-dir", type=Path, help="reuse an isolated running telemetry stream"
+    )
+    lifecycle = parser.add_mutually_exclusive_group()
+    lifecycle.add_argument(
+        "--start-stream",
+        action="store_true",
+        help="start ingestion and return without warm-up/measurement waits",
+    )
+    lifecycle.add_argument(
+        "--stop-stream", action="store_true", help="stop only the selected telemetry stream"
+    )
     parser.add_argument(
         "--datadog-semantic-mode",
         choices=["native", "combined"],

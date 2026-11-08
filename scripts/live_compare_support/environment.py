@@ -119,10 +119,14 @@ def collector_config(workload: Workload, run_id: str) -> dict[str, Any]:
             "collection_interval": interval,
             "tls": {"insecure": True},
             "metrics": {
-                name: {"enabled": True} for name in PG_RATES if name.startswith("postgresql.tup_")
+                name: {"enabled": True} for name in [*PG_RATES, "postgresql.database.locks"]
             },
         },
-        "redis": {"endpoint": "valkey-cart:6379", "collection_interval": interval},
+        "redis": {
+            "endpoint": "valkey-cart:6379",
+            "collection_interval": interval,
+            "metrics": {"redis.maxmemory": {"enabled": True}},
+        },
         "nginx": {"endpoint": "http://image-provider:8081/status", "collection_interval": interval},
         "kafkametrics": {
             "brokers": ["kafka:9092"],
@@ -130,13 +134,24 @@ def collector_config(workload: Workload, run_id: str) -> dict[str, Any]:
             "collection_interval": interval,
         },
         "hostmetrics": {
-            "root_path": "/hostfs",
             "collection_interval": interval,
-            "scrapers": {n: {} for n in ["cpu", "memory", "load", "network"]},
+            "scrapers": {
+                "cpu": {"metrics": {"system.cpu.utilization": {"enabled": True}}},
+                "memory": {
+                    "metrics": {
+                        "system.memory.limit": {"enabled": True},
+                        "system.linux.memory.available": {"enabled": True},
+                    }
+                },
+                "load": {},
+                "network": {},
+                "disk": {},
+            },
         },
         "docker_stats": {
             "endpoint": "unix:///var/run/docker.sock",
             "collection_interval": interval,
+            "metrics": {"container.state.status": {"enabled": True}},
         },
     }
     chosen = ["otlp", *workload.receivers]
@@ -222,10 +237,6 @@ def isolate(
             "read_only": True,
         }
     ]
-    if "hostmetrics" in workload.receivers:
-        collector["volumes"].append(
-            {"type": "bind", "source": "/", "target": "/hostfs", "read_only": True}
-        )
     if "docker_stats" in workload.receivers:
         collector["volumes"].append(
             {
@@ -367,3 +378,18 @@ class Environment:
     def stop(self) -> None:
         if (self.runtime / "compose.json").exists():
             self.compose("down", "--volumes", "--remove-orphans")
+
+    def healthy(self) -> bool:
+        if not (self.runtime / "compose.json").exists():
+            return False
+        # Compose emits one JSON object per service, including stopped containers.
+        rows = [
+            json.loads(line)
+            for line in self.compose("ps", "--all", "--format", "json").splitlines()
+            if line.strip()
+        ]
+        expected = set(read_json(self.runtime / "compose.json")["services"])
+        return {row.get("Service") for row in rows} == expected and all(
+            row.get("State") == "running" and row.get("Health", "") in ("", "healthy")
+            for row in rows
+        )

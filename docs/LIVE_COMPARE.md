@@ -10,6 +10,73 @@ Implementation task: [#146](https://github.com/XNotAGuestX/thinchackdash/issues/
 This tests selected conversions using shared OTel samples. It does not establish equivalence
 between independent native vendor collectors or verify actual alert delivery.
 
+## Reuse a running stream
+
+The infrastructure suite adds host metrics, Docker and Kafka to PostgreSQL, Redis and NGINX:
+28 cases, including exact conversions and the approved `SEMANTIC`, `DERIVED`, `TOPN`,
+`TIMEPIN`, `FULLWINDOW` and `NEWHOST` remarks. It uses the pending converter changes from
+[PR #156](https://github.com/XNotAGuestX/thinchackdash/pull/156); implementation and evidence
+are tracked in [#157](https://github.com/XNotAGuestX/thinchackdash/issues/157).
+
+Start telemetry once, independently of any measurement. This command returns after Docker
+startup and authentication; it does not wait through a warm-up or ten-minute measurement:
+
+```sh
+uv run scripts/live_compare.py \
+  --dataset-config scripts/live/datasets/infrastructure.yaml \
+  --tests scripts/live/suites/infrastructure.yaml \
+  --datadog-semantic-mode combined --dash0-dataset default \
+  --stream-dir out/live/infrastructure-stream --start-stream \
+  --out out/live/start-only
+```
+
+Leave it running while working. Once it has enough real history, run any suite against its
+latest completed window, with no collection sleep:
+
+```sh
+uv run scripts/live_compare.py \
+  --dataset-config scripts/live/datasets/infrastructure.yaml \
+  --tests scripts/live/suites/infrastructure.yaml \
+  --datadog-semantic-mode combined --dash0-dataset default \
+  --stream-dir out/live/infrastructure-stream --out out/live/infrastructure-01
+```
+
+The infrastructure suite is a short smoke: two minutes of measurement, with the same 3%
+tolerance and complete coverage required. The original default suite retains its ten-minute
+measurement. On first startup, real history must accumulate once: five minutes lookback,
+the measurement window and two minutes ingestion allowance, rounded to the minute. Insufficient
+history returns exit 2 immediately; leave the stream running and retry. Timestamps alone
+do not establish data availability: the actual comparisons still require complete finite
+samples and every expected series. A stopped, unhealthy or mismatched stream is rejected.
+No historical values are fabricated. Host metrics describe the Collector's Linux environment
+(the Docker VM on macOS); they are not measurements of the macOS host.
+
+Repeat `--start-stream` to check the existing stream without restarting it. Repeat the same
+comparison `--out` to reuse its original window and successful publication receipts. Use a
+new `--out` for a new window, changed suite or case selection. Several output directories
+share the stream's telemetry identity but have separate demo asset name prefixes. Neither
+comparison failures nor interruptions stop a retained stream. A failed individual import
+stays visible; unrelated successfully imported/read-back assets are still tested. Ambiguous
+creation results remain unretried and require reconciliation.
+
+Stop the selected stream with the same command as startup, replacing `--start-stream` with
+`--stop-stream`. That removes only its Compose project and volumes; destination assets stay.
+After a workload/receiver change, stop it and start it again before testing the new stream.
+
+Each case records its expected and actual conversion category and remark tags. Numeric
+parity and API/read-back evidence are separate from behavior equivalence: a passing tagged
+case does not prove the `SEMANTIC` scope assumption, the ignored panel time pin, top-N display,
+or monitor grace/full-window behavior. Those remain `remarkBehaviorValidation: not_run`.
+Checks stay disabled. Missing data and differences above 3% remain failures for every category.
+
+The infrastructure profile explicitly enables optional receiver metrics for PostgreSQL locks,
+Redis maxmemory, host CPU utilization/available memory/total memory, and Docker container count.
+Names and defaults are taken from the pinned Collector 0.160.0 metadata:
+[PostgreSQL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/receiver/postgresqlreceiver/metadata.yaml),
+[Redis](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/receiver/redisreceiver/metadata.yaml),
+[host CPU](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/receiver/hostmetricsreceiver/internal/scraper/cpuscraper/metadata.yaml),
+[Docker](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/receiver/dockerstatsreceiver/metadata.yaml).
+
 ## Run
 
 Prerequisites: uv, Docker Engine/Desktop with Compose, approximately 6 GB available RAM

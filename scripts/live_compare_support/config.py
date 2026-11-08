@@ -53,6 +53,8 @@ class Case(Model):
     relative_tolerance_pct: Nonnegative = 3
     absolute_tolerance: Nonnegative = 0
     require_nonzero: bool = True
+    expected_outcome: Literal["translated", "approximated", "assumed"] | None = None
+    expected_remarks: list[str] | None = None
 
     @model_validator(mode="after")
     def valid_reference(self) -> Case:

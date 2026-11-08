@@ -149,11 +149,16 @@
   const ticksEl = $("#ticks"), nowEl = $("#now"), dialEl = $(".dial");
   const MAX_TICKS = 120, LANES = 3;
   let tickCount = 0, doneN = 0;
-  const tickFor = (i) => ticksEl.children[Math.floor((i * tickCount) / items.length)];
+  // The ring always has MAX_TICKS ticks; each item owns an even share of them, so a small run
+  // still fills the ring (in its real outcome colours) instead of showing a few lines.
+  const ticksFor = (i) => {
+    const a = Math.floor((i * tickCount) / items.length), b = Math.floor(((i + 1) * tickCount) / items.length);
+    return Array.from(ticksEl.children).slice(a, Math.max(b, a + 1));
+  };
   const count = { converted: 0, review: 0, unsupported: 0 };
 
   function buildTicks() {
-    tickCount = Math.min(items.length, MAX_TICKS);
+    tickCount = items.length ? MAX_TICKS : 0;
     let out = "";
     for (let t = 0; t < tickCount; t++) {
       out += `<line class="tick" x1="200" y1="14" x2="200" y2="40" transform="rotate(${((t * 360) / tickCount).toFixed(2)} 200 200)" style="--i:${t}"/>`;
@@ -219,8 +224,8 @@
   }
 
   async function work(i, id) {
-    const it = items[i], tick = tickFor(i);
-    tick.classList.add("is-active");
+    const it = items[i], ticks = ticksFor(i);
+    ticks.forEach((t) => t.classList.add("is-active"));
     showNow(it.name);
     await window.MigrateBackend.process(it);   // backend.js: mock delay, or a real result
     if (id !== runId) return;
@@ -228,10 +233,11 @@
     onProgress(doneN / items.length);
   }
   function light(i) {
-    const it = items[i], tick = tickFor(i);
-    tick.classList.remove("is-active");
-    tick.classList.remove("t-converted", "t-review", "t-unsupported");
-    tick.classList.add(`t-${it.status}`);
+    const it = items[i];
+    ticksFor(i).forEach((tick) => {
+      tick.classList.remove("is-active", "t-converted", "t-review", "t-unsupported");
+      tick.classList.add(`t-${it.status}`);
+    });
     doneN++;
     count[it.status]++;
     $("#pct").textContent = Math.round((doneN / items.length) * 100);

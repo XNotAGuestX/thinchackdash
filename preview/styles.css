@@ -913,7 +913,40 @@ button:disabled { cursor: wait; opacity: 0.6; }
   .donut { max-width: 200px; }
   .mrows { width: 100%; }
 }
+/* Empirical check: the recorded Datadog vs Dash0 comparison, one row per case. */
+.emp { margin-top: 16px; border: 1px solid var(--line); background: color-mix(in srgb, var(--paper-2) 70%, transparent); padding: clamp(18px, 2.4vw, 28px); }
+.emp-head { display: flex; justify-content: space-between; align-items: end; gap: 1rem 2rem; flex-wrap: wrap; }
+.emp-head .mono { margin: 0 0 0.5rem; }
+.emp-t { margin: 0; font-weight: 300; font-size: clamp(1.5rem, 2.6vw, 2.1rem); letter-spacing: -0.035em; line-height: 1.05; }
+.emp-t .dot { color: var(--signal); }
+.emp-score { margin: 0; display: grid; justify-items: end; gap: 2px; }
+.emp-score b { font-weight: 250; font-size: clamp(2.2rem, 4vw, 3.2rem); line-height: 1; letter-spacing: -0.05em; color: var(--ok); font-variant-numeric: tabular-nums; }
+.emp-lead { margin: 0.9rem 0 1.2rem; max-width: 52rem; color: var(--ink-2); font-size: 0.95rem; line-height: 1.5; }
+.emp-cols, .emp-rows li { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 4.5rem; gap: 8px 20px; align-items: center; }
+.emp-cols { padding-bottom: 8px; }
+.emp-cols span:last-child { text-align: right; }
+.emp-rows { list-style: none; margin: 0; padding: 0; }
+.emp-rows li { padding: 11px 0; border-top: 1px solid var(--line); }
+.emp-name { margin: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 0.98rem; letter-spacing: -0.012em; }
+.emp-name .mono { color: var(--ink-3); }
+.emp-meter { display: grid; grid-template-columns: minmax(60px, 1fr) auto; gap: 14px; align-items: center; }
+.emp-track { position: relative; height: 4px; background: var(--line); }
+.emp-track::after { content: ""; position: absolute; right: 0; top: -4px; bottom: -4px; width: 1px; background: var(--line-2); }
+.emp-track em { display: block; height: 100%; min-width: 2px; background: var(--ok); transform-origin: left; animation: grow 900ms var(--ease) both; animation-delay: calc(300ms + var(--k) * 70ms); }
+.emp-val { display: grid; justify-items: end; gap: 1px; min-width: 9.5rem; }
+.emp-val b { font-weight: 400; font-size: 1.05rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.emp-res { margin: 0; text-align: right; color: var(--ok); }
+.emp-rows li.is-bad .emp-res, .emp-rows li.is-bad .emp-track em { color: var(--bad); background: var(--bad); }
+.emp-rows li.is-bad .emp-res { background: none; }
+.emp-note { margin: 1rem 0 0; line-height: 1.6; text-transform: none; letter-spacing: 0.02em; }
+@media (max-width: 760px) {
+  .emp-cols { display: none; }
+  .emp-rows li { grid-template-columns: minmax(0, 1fr) auto; }
+  .emp-meter { grid-column: 1 / -1; grid-row: 2; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .emp-track em { animation: none !important; }
   .dview, .hero *, .end *, .halo i, .orb, .mrow .bar em { animation: none !important; }
   .okring path { stroke-dashoffset: 0; }
   .donut .arc { transition: none; }

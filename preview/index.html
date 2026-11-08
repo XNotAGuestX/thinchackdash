@@ -233,6 +233,20 @@
               <ul class="dash-list" id="dash-list"></ul>
             </div>
           </div>
+          <!-- Empirical check: the recorded live comparison from docs/LIVE_EXTENSIONS.md, not this run. -->
+          <section class="emp" aria-labelledby="emp-title">
+            <div class="emp-head">
+              <div>
+                <p class="mono faint">Empirical check · recorded live run</p>
+                <h3 class="emp-t" id="emp-title">Datadog vs Dash0, measured<span class="dot">.</span></h3>
+              </div>
+              <p class="emp-score"><b id="emp-pass"></b><span class="mono faint">within tolerance</span></p>
+            </div>
+            <p class="emp-lead" id="emp-lead"></p>
+            <div class="emp-cols mono faint" aria-hidden="true"><span>Case</span><span>Mean difference</span><span>Result</span></div>
+            <ol class="emp-rows" id="emp-rows"></ol>
+            <p class="mono faint emp-note" id="emp-note"></p>
+          </section>
           <div class="done-acts">
             <button class="btn btn-primary btn-big" type="button" data-dview="end">Continue <span class="arrow" aria-hidden="true">→</span></button>
             <button class="btn btn-ghost" type="button" data-results="1">Back to results</button>

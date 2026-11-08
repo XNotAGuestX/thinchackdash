@@ -1,0 +1,11 @@
+{
+  "buildCommand": "",
+  "outputDirectory": "preview",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{backend,src,mappings,fixtures/datadog/integrations-core/postgres}/**",
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+}

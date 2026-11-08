@@ -87,7 +87,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(415, {"error": "Send application/json."})
             return
         origin = self.headers.get("Origin")
-        if origin and origin != f"http://{self.headers.get('Host')}":
+        host = self.headers.get("Host")
+        if origin and origin not in (f"http://{host}", f"https://{host}"):
             self._json(403, {"error": "Use the page served by this backend."})
             return
         try:

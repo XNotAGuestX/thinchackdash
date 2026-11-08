@@ -1,5 +1,7 @@
 # Datadog → Dash0 Migrator
 
+**📄 Presentation: [Deterministic Migration (Dash0 case)](00_dash0_case_pr%C3%A4sentation.pdf)**
+
 The local UI also supports explicitly requested Agent0 recommendations for blocked
 translations, capped at three calls per backend session. These drafts stay separate
 from the deterministic converter; see the exception in [AGENTS.md](AGENTS.md).

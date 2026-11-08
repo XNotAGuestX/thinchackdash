@@ -806,3 +806,236 @@ button:disabled { cursor: wait; opacity: 0.6; }
   .upload { grid-template-columns: minmax(0, 1fr); }
   .drop { border-right: 0; border-bottom: 1px solid var(--line-2); min-height: 200px; }
 }
+
+/* Results footer actions: Finish leads to the done screen, Run again starts over. */
+.foot-acts { display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap; }
+
+/* 4. Done: ready hero → what moved (donut) → end view. Ported from the keynote demo,
+   restyled in paper and ink with the signal accent. */
+#done { justify-content: center; }
+.done-wrap { display: flex; flex-direction: column; }
+.dview { display: flex; flex-direction: column; animation: rise 700ms var(--ease) both; }
+.dview[hidden] { display: none; }
+
+.hero, .end {
+  position: relative; isolation: isolate; display: grid; justify-items: center; text-align: center;
+  gap: clamp(22px, 4vh, 34px); min-height: min(72vh, 720px); align-content: center;
+}
+.hero-eyebrow { margin: 0; color: var(--ink-2); letter-spacing: 0.32em; animation: rise 1s var(--ease) 100ms both; }
+.hero-t { font-size: clamp(3rem, 9.4vw, 8rem); }
+.hero .hero-t { animation: reveal 1.8s var(--ease) 300ms both; }
+@keyframes reveal { from { opacity: 0; letter-spacing: 0.02em; filter: blur(12px); } }
+.hero-note { margin: 0; min-height: 1em; animation: rise 1s var(--ease) 1.8s both; }
+
+.halo { position: absolute; left: 50%; top: 50%; width: min(86vw, 720px); aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
+.halo i { position: absolute; inset: 0; border-radius: 50%; }
+.halo .h1 {
+  background: conic-gradient(from 0deg, transparent 0 62%, var(--signal) 80%, transparent 94%);
+  -webkit-mask: radial-gradient(circle, transparent 0 66%, #000 67% 67.5%, transparent 69%);
+  mask: radial-gradient(circle, transparent 0 66%, #000 67% 67.5%, transparent 69%);
+  animation: spin 16s linear infinite; opacity: 0.8;
+}
+.halo .h2 { inset: 14%; background: radial-gradient(circle, var(--glow-1), transparent 68%); animation: breathe 7s ease-in-out infinite; }
+.halo .h3, .halo .h4 { inset: 16.5%; box-shadow: inset 0 0 0 1px var(--line-2); animation: ripple 6s ease-out infinite; }
+.halo .h4 { animation-delay: 3s; }
+@keyframes breathe { 50% { transform: scale(1.08); opacity: 0.7; } }
+@keyframes ripple { 0% { transform: scale(0.82); opacity: 0; } 25% { opacity: 1; } 100% { transform: scale(1.32); opacity: 0; } }
+
+.orb {
+  width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--line-2); background: color-mix(in srgb, var(--paper) 60%, transparent); color: var(--ink);
+  transition: border-color 300ms, background-color 300ms, color 300ms, transform 400ms var(--ease);
+  animation: rise 1s var(--ease) 1.4s both;
+}
+.orb:hover { border-color: var(--signal); background: var(--signal); color: #fff; transform: scale(1.06); }
+.orb svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* What moved */
+.moved-lead { margin-top: 1rem; max-width: 46rem; }
+.moved { margin-top: clamp(28px, 5vh, 48px); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; }
+.donut-card, .dash-card { border: 1px solid var(--line); background: color-mix(in srgb, var(--paper-2) 70%, transparent); padding: clamp(18px, 2.4vw, 28px); }
+.donut-card { display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); gap: clamp(18px, 3vw, 32px); align-items: center; }
+.donut { width: 100%; height: auto; display: block; }
+.donut .track { stroke: var(--line); }
+.donut .arc { transition: stroke-dasharray 1.2s var(--ease); }
+.donut .arc.converted { stroke: var(--ok); }
+.donut .arc.review { stroke: var(--warn); }
+.donut .arc.unsupported { stroke: var(--bad); }
+.donut .pct { font: 250 30px var(--sans); letter-spacing: -0.04em; fill: var(--ink); }
+.donut .pl { font: 400 7.2px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; fill: var(--ink-3); }
+.mrows { display: grid; gap: 2px; }
+.mrow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.mrow:first-child { border-top: 0; }
+.mrow i { width: 8px; height: 8px; background: currentColor; }
+.mrow span { color: var(--ink-2); font-size: 0.95rem; }
+.mrow b { font-weight: 400; font-size: 1.4rem; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.mrow .bar { grid-column: 2 / -1; height: 3px; background: var(--line); overflow: hidden; }
+.mrow.s-converted { --c: var(--ok); }
+.mrow.s-review { --c: var(--warn); }
+.mrow.s-unsupported { --c: var(--bad); }
+.mrow .bar em { display: block; height: 100%; background: var(--c); transform-origin: left; animation: grow 1s var(--ease) 300ms both; }
+
+.dash-head { margin: 0 0 0.6rem; }
+.dash-list { list-style: none; margin: 0; padding: 0; display: grid; max-height: 320px; overflow: auto; }
+.dash-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: baseline; padding: 11px 0; border-top: 1px solid var(--line); }
+.dash-list .nm { font-size: 0.98rem; letter-spacing: -0.012em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-list .ct { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.dash-list .stack { grid-column: 1 / -1; display: flex; gap: 2px; height: 4px; }
+.dash-list .stack em { display: block; height: 100%; }
+.stack .converted { background: var(--ok); }
+.stack .review { background: var(--warn); }
+.stack .unsupported { background: var(--bad); }
+
+.done-acts { margin-top: clamp(28px, 5vh, 48px); display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap; }
+.done-acts.center { justify-content: center; margin-top: 0.6rem; }
+
+/* End view */
+.end .lead { max-width: 40rem; }
+.okring {
+  width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid color-mix(in srgb, var(--ok) 60%, transparent);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  box-shadow: 0 0 110px color-mix(in srgb, var(--ok) 28%, transparent);
+  animation: rise 800ms var(--ease) both;
+}
+.okring svg { width: 52px; height: 52px; fill: none; stroke: var(--ok); stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+.okring path { stroke-dasharray: 60; stroke-dashoffset: 60; animation: draw 900ms var(--ease) 500ms forwards; }
+.end > :not(.okring) { animation: rise 800ms var(--ease) both; }
+.end > :nth-child(2) { animation-delay: 120ms; }
+.end > :nth-child(3) { animation-delay: 220ms; }
+.end > :nth-child(4) { animation-delay: 320ms; }
+
+@media (max-width: 860px) {
+  .moved { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .donut-card { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .donut { max-width: 200px; }
+  .mrows { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dview, .hero *, .end *, .halo i, .orb, .mrow .bar em { animation: none !important; }
+  .okring path { stroke-dashoffset: 0; }
+  .donut .arc { transition: none; }
+}
+
+.item.cp-hl { animation: cp-hl 3.2s var(--ease); }
+.item.cp-hl .item-btn .name { color: var(--signal); }
+@keyframes cp-hl {
+  0%, 70% { background: color-mix(in srgb, var(--signal) 12%, transparent); box-shadow: inset 2px 0 0 var(--signal); }
+  100% { background: transparent; box-shadow: inset 2px 0 0 transparent; }
+}
+
+.cp-sheet {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: min(640px, 100vw); overflow: auto;
+  background: var(--paper); border-left: 1px solid var(--line-2); padding: 88px clamp(18px, 3vw, 32px) 120px;
+  box-shadow: -30px 0 80px -40px rgba(0, 0, 0, 0.6);
+  transform: translateX(24px); opacity: 0; transition: transform 420ms var(--ease), opacity 300ms var(--ease);
+}
+.cp-sheet.is-open { transform: none; opacity: 1; }
+.cp-sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.cp-sheet-head p { margin: 0 0 0.4rem; }
+.cp-sheet-head h3 { margin: 0; font-weight: 300; font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -0.035em; line-height: 1.05; }
+.cp-x { width: 36px; height: 36px; flex: none; border: 1px solid var(--line-2); background: none; color: var(--ink); font-size: 1.2rem; cursor: pointer; }
+.cp-x:hover { border-color: var(--signal); color: var(--signal); }
+.cp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 1.6rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--line-2); }
+.cp-rows { list-style: none; margin: 0; padding: 0; }
+.cp-rows li { padding: 0.9rem 0; border-bottom: 1px solid var(--line); }
+.cp-name { margin: 0 0 0.55rem; display: flex; align-items: center; gap: 0.55rem; font-size: 0.98rem; letter-spacing: -0.012em; }
+.cp-name i { width: 7px; height: 7px; flex: none; background: currentColor; }
+.cp-name .mono { margin-left: auto; color: var(--ink-3); }
+.cp-rows .s-converted .cp-name i { color: var(--ok); }
+.cp-rows .s-review .cp-name i { color: var(--warn); }
+.cp-rows .s-unsupported .cp-name i { color: var(--bad); }
+.cp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cp-pair code {
+  display: block; min-width: 0; padding: 0.55rem 0.65rem; background: var(--paper-2); border: 1px solid var(--line);
+  font: 400 0.74rem/1.45 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9.5em; overflow: auto;
+}
+.cp-rows .s-unsupported .cp-pair code + code { color: var(--bad); }
+
+@media (max-width: 560px) {
+  .cp-pair, .cp-cols { grid-template-columns: minmax(0, 1fr); }
+  .cp-cols span + span { display: none; }
+}
+
+/* Jarvis: a living dot, bottom right. Breathes while passive, ripples while it speaks,
+   circles while it works, follows the microphone while it listens. */
+.jv {
+  --lvl: 0; --jv: var(--signal);
+  position: fixed; right: max(20px, calc(var(--pad) - 8px)); bottom: 22px; z-index: 20;
+  display: flex; align-items: center; gap: 14px; pointer-events: none;
+}
+.jv > * { pointer-events: auto; }
+.jv-dot { position: relative; width: 60px; height: 60px; padding: 0; border: 0; background: none; cursor: pointer; flex: none; border-radius: 50%; }
+.jv-dot > * { position: absolute; border-radius: 50%; pointer-events: none; }
+.jv-core {
+  inset: 22px; background: radial-gradient(circle at 34% 30%, #fff 0 8%, var(--jv) 38%, color-mix(in srgb, var(--jv) 55%, #000) 100%);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--jv) 70%, transparent), 0 0 36px color-mix(in srgb, var(--jv) 35%, transparent);
+  transform: scale(calc(1 + var(--lvl) * 0.7)); transition: transform 90ms linear, inset 500ms var(--ease), background 500ms;
+}
+.jv-halo { inset: 6px; background: radial-gradient(circle, color-mix(in srgb, var(--jv) 38%, transparent), transparent 68%); animation: jv-breathe 4.2s ease-in-out infinite; }
+.jv-ring { inset: 18px; border: 1px solid color-mix(in srgb, var(--jv) 70%, transparent); opacity: 0; }
+.jv-arc { inset: 2px; width: 56px; height: 56px; opacity: 0; transition: opacity 300ms; }
+.jv-arc circle { fill: none; stroke: var(--jv); stroke-width: 1.2; stroke-linecap: round; stroke-dasharray: 22 78; }
+.jv-dot:hover .jv-core { inset: 20px; }
+.jv-dot:focus-visible { outline-offset: 2px; }
+
+.jv[data-state="passive"] .jv-core { inset: 24px; filter: saturate(0.75); }
+.jv[data-state="passive"] .jv-halo { animation-duration: 6.5s; opacity: 0.7; }
+.jv[data-state="speaking"] .jv-core { animation: jv-talk 1.15s ease-in-out infinite; }
+.jv[data-state="speaking"] .jv-ring { animation: jv-ripple 1.6s var(--ease) infinite; }
+.jv[data-state="speaking"] .jv-ring.r2 { animation-delay: 0.8s; }
+.jv[data-state="working"] .jv-arc, .jv[data-state="connecting"] .jv-arc { opacity: 1; animation: spin 1.3s linear infinite; }
+.jv[data-state="connecting"] .jv-core { animation: jv-blink 1s ease-in-out infinite; }
+.jv[data-state="listening"] { --jv: var(--ok); }
+.jv[data-state="listening"] .jv-ring { opacity: calc(0.35 + var(--lvl)); transform: scale(calc(1.2 + var(--lvl) * 0.9)); transition: transform 90ms linear; }
+/* With real audio the level drives the core; the demo's keyframe pulse stays off then. */
+.jv[style*="--lvl"][data-state="speaking"] .jv-core { animation: none; }
+@keyframes jv-breathe { 50% { transform: scale(1.18); opacity: 0.55; } }
+@keyframes jv-talk { 0%, 100% { transform: scale(1); } 18% { transform: scale(1.28); } 34% { transform: scale(1.05); } 52% { transform: scale(1.36); } 70% { transform: scale(1.1); } 84% { transform: scale(1.22); } }
+@keyframes jv-ripple { from { transform: scale(1); opacity: 0.9; } to { transform: scale(2.3); opacity: 0; } }
+@keyframes jv-blink { 50% { opacity: 0.45; } }
+
+.jv-hint { position: absolute; right: 70px; white-space: nowrap; color: var(--ink-3); opacity: 0; transition: opacity 200ms; pointer-events: none; }
+.jv:has(.jv-dot:hover) .jv-hint { opacity: 1; }
+.jv.is-error { --jv: var(--bad); }
+.jv.is-error .jv-core { animation: jv-blink 0.5s ease-in-out 3; }
+
+/* Where Jarvis "clicks" during the guided demo. */
+.jv-touch { outline: 1px solid var(--signal) !important; outline-offset: 4px; animation: jv-touch 900ms var(--ease); }
+@keyframes jv-touch { 0% { outline-offset: 14px; outline-color: transparent; } 60% { outline-offset: 3px; } }
+
+@media (max-width: 560px) { .jv { right: 12px; bottom: 12px; } }
+@media (prefers-reduced-motion: reduce) {
+  .jv *, .jv-touch, .item.cp-hl { animation: none !important; }
+  .cp-sheet { transition: none; }
+}
+
+/* Start tour: header text button, same voice as the theme toggle, with Jarvis's dot. */
+.tour-btn { gap: 0.55rem; color: var(--ink); }
+.tour-btn:hover { color: var(--signal); }
+.tour-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--signal);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--signal) 70%, transparent);
+  animation: jv-breathe 3s ease-in-out infinite;
+}
+.tour-btn.is-on .tour-dot { animation: jv-blink 0.9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .tour-dot { animation: none !important; } }
+.tour-btn:disabled { cursor: default; color: var(--ink-2); }
+/* The tour can't be interrupted: this layer takes every click while it runs. */
+.tour-shield { position: fixed; inset: 0; z-index: 30; background: transparent; cursor: default; }
+.tour-shield[hidden] { display: none; }
+
+/* A ring around the dot says "talk to me": always there, and it reaches out gently while
+   Jarvis waits. It tightens on hover and hides while the tour locks the dot. */
+.jv-dot::before, .jv-dot::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 50%; pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--jv) 55%, transparent);
+  transition: inset 300ms var(--ease), border-color 300ms;
+}
+.jv-dot::after { border-color: color-mix(in srgb, var(--jv) 45%, transparent); opacity: 0; }
+.jv[data-state="passive"] .jv-dot::after, .jv[data-state="idle"] .jv-dot::after { animation: jv-invite 3.2s var(--ease) infinite; }
+.jv-dot:hover::before { inset: 0; border-color: var(--jv); }
+@keyframes jv-invite { 0% { transform: scale(1); opacity: 0.8; } 60%, 100% { transform: scale(1.45); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .jv-dot::after { animation: none !important; } }

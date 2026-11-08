@@ -39,3 +39,6 @@ private-input/
 out/
 .vercel
 .env.local
+
+# Cached voice lines for the local copilot tour (ElevenLabs audio)
+.copilot-voice/

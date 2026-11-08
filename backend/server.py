@@ -11,6 +11,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 
 from backend.ai import AiHelp, HelpError
+from backend.copilot import CopilotError, signed_url, speech
 from migrator.convert import ConvertOptions, run_convert
 from migrator.input import InputError
 
@@ -79,7 +80,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlsplit(self.path).path
-        if route not in ("/api/convert", "/api/suggest"):
+        if route not in ("/api/convert", "/api/suggest", "/api/copilot/session", "/api/copilot/speech"):
             self._json(404, {"error": "Unknown endpoint."})
             return
         # This local tool only accepts JSON from its own page, never cross-origin forms.
@@ -98,10 +99,24 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             payload = json.loads(self.rfile.read(length))
             help_session = cast("Server", self.server).ai
-            result = (
-                help_session.remember(convert_request(payload)) if route == "/api/convert"
-                else help_session.suggest(payload)
-            )
+            if route == "/api/copilot/speech":
+                audio = speech(payload)
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Content-Length", str(len(audio)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(audio)
+                return
+            if route == "/api/copilot/session":
+                result = signed_url()
+            elif route == "/api/convert":
+                result = help_session.remember(convert_request(payload))
+            else:
+                result = help_session.suggest(payload)
+        except CopilotError as error:
+            self._json(error.status, {"error": str(error)})
+            return
         except HelpError as error:
             self._json(error.status, {
                 "error": str(error), "ai": cast("Server", self.server).ai.info()

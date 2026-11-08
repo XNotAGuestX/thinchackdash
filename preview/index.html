@@ -20,6 +20,9 @@
       <span class="brand"><span class="mark" aria-hidden="true"></span>Migrate</span>
       <div class="top-right">
         <span class="mono faint hide-sm" id="data-mode">Local converter</span>
+        <button id="tour-btn" class="theme-btn tour-btn" type="button" hidden>
+          <span class="tour-dot" aria-hidden="true"></span><span class="tour-txt">Start tour</span>
+        </button>
         <button id="theme-btn" class="theme-btn" type="button" aria-label="Switch to light mode">
           <span class="theme-icon" aria-hidden="true"></span><span class="theme-txt">Light</span>
         </button>
@@ -164,7 +167,10 @@
             <p id="callout-txt">1 item has no Dash0 equivalent.</p>
             <button class="btn btn-primary" type="button" id="options-btn">See options <span class="arrow" aria-hidden="true">→</span></button>
           </div>
-          <button id="again-btn" class="btn btn-ghost" type="button">Run again</button>
+          <div class="foot-acts">
+            <button id="finish-btn" class="btn btn-primary btn-big" type="button">Finish migration <span class="arrow" aria-hidden="true">→</span></button>
+            <button id="again-btn" class="btn btn-ghost" type="button">Run again</button>
+          </div>
         </div>
       </div>
     </section>
@@ -197,10 +203,77 @@
         </div>
       </div>
     </section>
+
+    <!-- 4. Done: "ready" hero, then what moved (donut per panel), then the end view. -->
+    <section id="done" class="screen" aria-label="Migration complete">
+      <div class="wrap done-wrap">
+        <div class="dview" data-view="ready">
+          <div class="hero">
+            <div class="halo" aria-hidden="true"><i class="h2"></i><i class="h3"></i><i class="h4"></i><i class="h1"></i></div>
+            <p class="mono hero-eyebrow">Migration complete</p>
+            <h2 class="display hero-t" tabindex="-1" id="ready-title">Your dashboards<br>are ready<span class="dot">.</span></h2>
+            <button class="orb" type="button" data-dview="overview" aria-label="See what moved">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+            </button>
+            <p class="mono faint hero-note" id="ready-note"></p>
+          </div>
+        </div>
+
+        <div class="dview" data-view="overview" hidden>
+          <button class="back mono" type="button" data-dview="ready"><span aria-hidden="true">←</span> Back</button>
+          <h2 class="display display-sm" tabindex="-1" id="moved-title">What moved<span class="dot">.</span></h2>
+          <p class="lead moved-lead" id="moved-lead"></p>
+          <div class="moved">
+            <div class="donut-card">
+              <svg class="donut" id="donut" viewBox="0 0 140 140" role="img"></svg>
+              <div class="mrows" id="mrows"></div>
+            </div>
+            <div class="dash-card">
+              <p class="mono faint dash-head">Panels per dashboard</p>
+              <ul class="dash-list" id="dash-list"></ul>
+            </div>
+          </div>
+          <div class="done-acts">
+            <button class="btn btn-primary btn-big" type="button" data-dview="end">Continue <span class="arrow" aria-hidden="true">→</span></button>
+            <button class="btn btn-ghost" type="button" data-results="1">Back to results</button>
+          </div>
+        </div>
+
+        <div class="dview" data-view="end" hidden>
+          <div class="end">
+            <div class="okring" aria-hidden="true"><svg viewBox="0 0 56 56"><path d="M15 29 24 38 42 19"/></svg></div>
+            <h2 class="display hero-t" tabindex="-1" id="end-title">All set<span class="dot">.</span></h2>
+            <p class="lead" id="end-lead"></p>
+            <div class="done-acts center">
+              <a class="btn btn-primary btn-big" id="end-download" hidden>Download results (.json) <span class="arrow" aria-hidden="true">↓</span></a>
+              <button class="btn btn-primary btn-big" type="button" data-results="1" id="end-results">Back to results <span class="arrow" aria-hidden="true">→</span></button>
+              <button class="btn btn-primary btn-big" type="button" data-dview="fine" id="end-next" hidden>Continue <span class="arrow" aria-hidden="true">→</span></button>
+              <button class="btn btn-ghost" type="button" id="end-again">Convert more</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Closing page from the keynote demo. Reachable only once no blocked item is left open. -->
+        <div class="dview" data-view="fine" hidden>
+          <div class="end">
+            <div class="okring" aria-hidden="true"><svg viewBox="0 0 56 56"><path d="M15 29 24 38 42 19"/></svg></div>
+            <h2 class="display hero-t" tabindex="-1" id="fine-title">All systems<br>functioning<span class="dot">.</span></h2>
+            <p class="lead">Welcome to Dash0. The dashboard is yours now.</p>
+            <div class="done-acts center">
+              <button class="btn btn-primary btn-big" type="button" data-results="1">Explore the results <span class="arrow" aria-hidden="true">→</span></button>
+              <button class="btn btn-ghost" type="button" data-dview="ready">Replay</button>
+            </div>
+            <p class="mono faint" id="fine-note"></p>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script src="data.js"></script>
   <script src="backend.js"></script>
   <script src="app.js"></script>
+  <script src="copilot.js"></script>
+  <script src="demo.js"></script>
 </body>
 </html>

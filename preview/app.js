@@ -11,7 +11,7 @@
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
   const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
-  const screens = { start: $("#start"), run: $("#run"), unsupported: $("#unsupported") };
+  const screens = { start: $("#start"), run: $("#run"), unsupported: $("#unsupported"), done: $("#done") };
   const board = $("#board");
   const progress = $("#progress");
   const title = $("#results-title");
@@ -782,6 +782,107 @@
     $(`[data-sugg="${it.id}"] .note`, aiAct)?.remove();
   }
 
+  /* ======================================================================
+     Done. Three views after the results: "Your dashboards are ready", what
+     moved (a donut of the items by status, then panels per dashboard), and
+     an end view. Counts come from the same items as the board.
+     ====================================================================== */
+  const DONE_STATUS = [["converted", "Translated"], ["review", "With remarks"], ["unsupported", "Blocked"]];
+  const DONUT_R = 58, DONUT_C = (2 * Math.PI * DONUT_R).toFixed(2);
+
+  function renderDone() {
+    const total = items.length;
+    const c = { converted: 0, review: 0, unsupported: 0 };
+    items.forEach((it) => c[it.status]++);
+    const pct = total ? Math.round((c.converted / total) * 100) : 0;
+
+    // Donut: one arc per status, a small gap between arcs when more than one is present.
+    const gap = DONE_STATUS.filter(([s]) => c[s]).length > 1 ? 2.5 : 0;
+    let off = 0, arcs = "";
+    for (const [s] of DONE_STATUS) {
+      const len = total ? (c[s] / total) * DONUT_C : 0;
+      if (len) arcs += `<circle class="arc ${s}" cx="70" cy="70" r="${DONUT_R}" fill="none" stroke-width="11" data-len="${Math.max(0.1, len - gap).toFixed(2)}" stroke-dasharray="0 ${DONUT_C}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"/>`;
+      off += len;
+    }
+    const donut = $("#donut");
+    donut.setAttribute("aria-label", `${c.converted} of ${total} translated, ${c.review} with remarks, ${c.unsupported} blocked`);
+    donut.innerHTML = `<circle class="track" cx="70" cy="70" r="${DONUT_R}" fill="none" stroke-width="11"/>${arcs}
+      <text class="pct" x="70" y="74" text-anchor="middle">${pct}%</text>
+      <text class="pl" x="70" y="91" text-anchor="middle">translated 1:1</text>`;
+
+    $("#mrows").innerHTML = DONE_STATUS.map(([s, label]) => `<div class="mrow s-${s}">
+        <i aria-hidden="true"></i><span>${label}</span><b>${c[s]}</b>
+        <span class="bar" aria-hidden="true"><em style="width:${total ? ((c[s] / total) * 100).toFixed(1) : 0}%"></em></span>
+      </div>`).join("");
+
+    // Panels per dashboard: monitors are grouped together; mock items have no dashboard.
+    const groups = new Map();
+    for (const it of items) {
+      const name = it.parent === "Monitor" ? "Monitors" : it.parent || "Demo dashboard";
+      if (!groups.has(name)) groups.set(name, { converted: 0, review: 0, unsupported: 0, n: 0 });
+      const g = groups.get(name);
+      g[it.status]++; g.n++;
+    }
+    $("#dash-list").innerHTML = [...groups].sort((a, b) => b[1].n - a[1].n).map(([name, g]) => `<li>
+        <span class="nm">${esc(name)}</span><span class="ct mono">${g.converted}/${g.n} translated</span>
+        <span class="stack" aria-hidden="true">${DONE_STATUS.filter(([s]) => g[s]).map(([s]) => `<em class="${s}" style="flex:${g[s]}"></em>`).join("")}</span>
+      </li>`).join("");
+
+    const panels = real ? "widgets and monitors" : "panels and alerts";
+    $("#moved-lead").textContent = `${c.converted} of ${total} ${panels} translated one to one. ${c.review} carry remarks to review, ${c.unsupported} ${c.unsupported === 1 ? "is" : "are"} blocked.`;
+
+    const note = real ? "Converted offline · Nothing has been sent to Dash0" : "Simulated demo";
+    $("#ready-note").textContent = note;
+    $("#fine-note").textContent = note;
+    // Open issues: blocked items whose suggestion has not been accepted. Only with none left
+    // does the end view lead on to the closing page.
+    const open = items.filter((it) => it.status === "unsupported" && it.state !== "accepted").length;
+    $("#end-next").hidden = open > 0;
+    const follow = open ? ` ${open} blocked item${open === 1 ? " needs" : "s need"} manual follow-up.` : "";
+    $("#end-lead").textContent = real
+      ? `Your Perses and Dash0 files are ready to download. Nothing has been sent to Dash0 yet.${follow}`
+      : open ? `The dashboards are in Dash0.${follow}` : "Every item is translated or has an accepted fix.";
+    const dl = $("#end-download");
+    dl.hidden = !(real && downloadUrl);
+    if (!dl.hidden) { dl.href = downloadUrl; dl.download = "conversion-results.json"; }
+    // One primary action: Continue when the closing page is next, else download or results.
+    if (!open) dl.hidden = true;
+    $("#end-results").hidden = !open || !dl.hidden;
+  }
+
+  function drawDonut() {
+    const arcs = $$("#donut .arc");
+    arcs.forEach((a) => a.setAttribute("stroke-dasharray", `0 ${DONUT_C}`));
+    requestAnimationFrame(() => requestAnimationFrame(() => arcs.forEach((a, k) =>
+      setTimeout(() => a.setAttribute("stroke-dasharray", `${a.dataset.len} ${DONUT_C}`), still() ? 0 : k * 150))));
+  }
+
+  const DONE_FOCUS = { ready: "#ready-title", overview: "#moved-title", end: "#end-title", fine: "#fine-title" };
+  function doneView(name) {
+    $$("#done .dview").forEach((v) => (v.hidden = v.dataset.view !== name));
+    window.scrollTo(0, 0);
+    if (name === "overview") drawDonut();
+    $(DONE_FOCUS[name]).focus({ preventScroll: true });
+  }
+
+  async function openDone() {
+    renderDone();
+    $$("#done .dview").forEach((v) => (v.hidden = true));
+    await show("done");
+    doneView("ready");
+  }
+
+  $("#finish-btn").addEventListener("click", openDone);
+  $("#done").addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-dview], [data-results]");
+    if (!t) return;
+    if (t.dataset.dview) return doneView(t.dataset.dview);
+    await show("run");
+    window.scrollTo(0, 0);
+    $("#finish-btn").focus({ preventScroll: true });
+  });
+  $("#end-again").addEventListener("click", () => $("#again-btn").click());
+
   /* ---------- Events ---------- */
   board.addEventListener("click", (e) => {
     const t = e.target.closest("button");
@@ -833,4 +934,32 @@
     $$(".start-title, .start-row > *").forEach((n) => { n.style.animation = "none"; void n.offsetWidth; n.style.animation = ""; });
     $("#start-btn").focus();
   });
+
+  /* ---------- Hooks for the voice copilot (copilot.js) ----------
+     Read items and navigate only. Nothing here changes an item or a compiler result. */
+  window.MigrateApp = {
+    items: () => items,
+    ready: () => board.classList.contains("is-done"),
+    async showResults() {
+      if (!screens.run.classList.contains("is-active")) await show("run");
+    },
+    // Back to an empty start screen without reloading (the guided tour starts here).
+    async restart() {
+      runId++;
+      stopStage();
+      setFiles([]);
+      if (!screens.start.classList.contains("is-active")) await show("start");
+      window.scrollTo(0, 0);
+    },
+    // Make an item's row visible: show all rows, unfold its review group, open its drawer.
+    reveal(it) {
+      const li = $(`#item-${it.id}`);
+      if (!li) return null;
+      if (li.classList.contains("is-extra") && !board.classList.contains("show-all")) $("[data-more]", board)?.click();
+      const group = li.closest(".rgroup.is-collapsed");
+      if (group) $("[data-group]", group)?.click();
+      if (!it.open) toggle(it);
+      return li;
+    },
+  };
 })();

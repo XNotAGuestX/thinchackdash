@@ -33,6 +33,29 @@ Dispatched failures/timeouts count; no automatic retries. At zero, the UI says:
 Restarting the local server resets its in-memory counter; this is not persistent
 per-account billing. Translated warnings remain hidden; other warnings stay short names.
 
+## Optional voice copilot
+
+Clicking the **Jarvis dot** (bottom right) starts a voice conversation with the ElevenLabs agent
+"Migration Copilot". **Start tour** (header) has Jarvis walk through the whole tool from the
+start screen, speaking each line: `POST /api/copilot/speech` (`{text}`, at most 400 characters)
+returns MP3 in the agent's voice (`conversation_config.tts.voice_id`, or `ELEVENLABS_VOICE_ID`),
+cached in `.copilot-voice/` so a replay costs no credits. Without keys the tour runs silently.
+Lines and timing: `preview/demo.js` and `preview/DEMO_SCRIPT.md`. It explains the finished report and navigates the page; it never
+converts, changes outcomes or touches artifacts. Only that click starts a session, and it
+sends the migration summary (counts, item names, diagnostics, suggested actions) to ElevenLabs.
+
+Set `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID` in the environment or `.env` and restart.
+`POST /api/copilot/session` (body `{}`) returns `{signedUrl}` from ElevenLabs'
+`get-signed-url` endpoint (valid 15 minutes, one session); the key never reaches the browser.
+The page loads `@elevenlabs/client@1.30.0` from jsDelivr on first use.
+
+The agent needs, in ElevenLabs: authentication enabled (signed URLs), `{{migration_summary}}`
+in its prompt (a JSON string), and four **client** tools with **Wait for response** on:
+`get_migration_summary()`, `get_issue_details(issue_id)`, `open_dashboard(dashboard_id)`,
+`highlight_issue(issue_id)`. Ids come from the summary (`r3`, `d1`); names also match.
+`open_dashboard` opens a before/after panel (Datadog query → Dash0 query per panel, read from
+the returned source and target artifacts).
+
 ## API
 
 ```json

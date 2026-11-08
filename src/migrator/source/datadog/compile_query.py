@@ -42,6 +42,56 @@ from migrator.target import Diagnostic, DiagnosticCode, Severity
 RATE_INTERVAL = "$__rate_interval"
 DEFAULT_AGGREGATOR: SpaceAggregator = "avg"  # Datadog's space aggregation without `agg:`
 DEFAULT_AGGREGATOR_DOC = "https://docs.datadoghq.com/dashboards/querying/#aggregation-method"
+ROLLUP_DOC = "https://docs.datadoghq.com/dashboards/functions/rollup/"
+FILL_DOC = "https://docs.datadoghq.com/dashboards/functions/interpolation/#fill"
+
+# Functions that block with a documented reason (#120): name -> (message, suggested action).
+# `.rollup(<AGGREGATOR>, <INTERVAL>)` (ROLLUP_DOC): "The start and end of rollup intervals are
+# aligned to UNIX time", and "The default rollup time interval varies depending on how the data is
+# visualized." `<agg>_over_time(x[<range>])` is a window ending at each Perses step instead, so the
+# buckets differ; a fixed `<INTERVAL>` range would also break the `$__rate_interval`-only rule.
+# `.fill(<METHOD>, <LIMIT>)` (FILL_DOC): "Interpolate missing metric values" with `linear`, `last`,
+# `zero` or `null`, "LIMIT [optional, default=300, maximum=600]" seconds. PromQL has no gap
+# interpolation, and a numeric method (`.fill(0)` in the pinned dashboards) is undocumented.
+# Every argument form of both blocks.
+_FUNCTION_BLOCKS: dict[str, tuple[str, str]] = {
+    "rollup": (
+        "Query function '.rollup()' is blocked: Datadog aligns rollup buckets to UNIX time and "
+        f"picks the default interval per graph ({ROLLUP_DOC}); a PromQL '<agg>_over_time' window "
+        "per dashboard step does not reproduce them.",
+        "Migrate this widget manually, or remove '.rollup()' from the source query if the "
+        "default time aggregation is acceptable.",
+    ),
+    "fill": (
+        "Query function '.fill()' is blocked: PromQL has no equivalent of Datadog's gap "
+        f"interpolation (methods linear, last, zero, null; gap limit in seconds; {FILL_DOC}).",
+        "Migrate this widget manually, or remove '.fill()' from the source query if unfilled "
+        "gaps are acceptable.",
+    ),
+}
+
+# Type modifiers stay blocked (issue #118). Datadog: "as_count() ... giving you the absolute
+# variation of a metric value over a rollup interval", and on a COUNT, as_rate() "Divides the
+# result post-aggregation by the sampling interval", but "There is no normalization on tiny
+# intervals (when no time aggregation occurs), thus the raw metric value counts are returned."
+# Both results depend on the rollup interval Datadog picks for the time range; rate() and
+# increase() over $__rate_interval do not reproduce it. On a GAUGE both have no effect, but the
+# mapping does not record the Datadog in-app type (`kind: rate` covers COUNT, RATE and
+# per-second GAUGE). https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/
+TYPE_MODIFIER_DOC = "https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/"
+_TYPE_MODIFIER_BLOCKS = {
+    "as_count": (
+        "'.as_count()' returns the change per Datadog rollup interval, which depends on the "
+        f"time range ({TYPE_MODIFIER_DOC}); PromQL over $__rate_interval has no exact "
+        "equivalent.",
+        "Migrate this widget manually.",
+    ),
+    "as_rate": (
+        "'.as_rate()' on a COUNT returns raw counts on tiny rollup intervals, not a per-second "
+        f"rate ({TYPE_MODIFIER_DOC}); the mapping does not record the Datadog in-app type.",
+        "Migrate this widget manually.",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -101,18 +151,49 @@ class _Diags:
         return CompiledError(diagnostics=list(self.items))
 
 
+# `.weighted()` stays blocked in every form (#116). Datadog: "The `weighted()` function accounts
+# for the short-lived lifespan of transient, churning tag values when summing gauge metrics in
+# space to prevent artificial spikes"
+# (https://docs.datadoghq.com/dashboards/functions/smoothing/#weighted). The guide weighs each
+# series' rollup by its submission rate: at a 10 s interval, a value of 12 present in 3 of the
+# 6 slots of a 60 s point counts as 6, not 12
+# (https://docs.datadoghq.com/dashboards/guide/how-weighted-works/). The weight needs the metric's
+# submission interval from the Datadog Metrics Catalog, which the query does not carry, and it
+# equals a plain sum only when no series churns, which depends on the data.
+WEIGHTED_DOC = "https://docs.datadoghq.com/dashboards/guide/how-weighted-works/"
+
+
+def _block_weighted(d: _Diags) -> CompiledError:
+    return d.block(
+        "UNSUPPORTED_QUERY_FUNCTION",
+        "Query function '.weighted()' is not supported: Datadog weights each series by the "
+        "metric's submission interval from its Metrics Catalog, which the query does not carry "
+        f"({WEIGHTED_DOC}).",
+        "Migrate this widget manually; removing '.weighted()' changes the sum whenever tag "
+        "values churn.",
+    )
+
+
 def compile_metric_query(
     q: MetricQuery, mapping: DatadogMapping, ctx: QueryContext
 ) -> CompiledQuery:
     d = _Diags(ctx)
 
+    if any(fn.name == "weighted" for fn in q.functions):
+        return _block_weighted(d)
     if q.functions:
         name = q.functions[0].name
-        return d.block(
-            "UNSUPPORTED_QUERY_FUNCTION",
-            f"Query function '.{name}()' is not supported.",
-            "Remove the function from the source query or migrate this widget manually.",
-        )
+        if name in _TYPE_MODIFIER_BLOCKS and not q.functions[0].args:
+            message, action = _TYPE_MODIFIER_BLOCKS[name]
+        else:
+            message, action = _FUNCTION_BLOCKS.get(
+                name,
+                (
+                    f"Query function '.{name}()' is not supported.",
+                    "Remove the function from the source query or migrate this widget manually.",
+                ),
+            )
+        return d.block("UNSUPPORTED_QUERY_FUNCTION", message, action)
     aggregator = q.aggregator
     if aggregator is None:
         aggregator = DEFAULT_AGGREGATOR

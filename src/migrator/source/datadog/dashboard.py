@@ -27,7 +27,7 @@ from migrator.source.datadog.formula import (
 )
 from migrator.source.datadog.mapping import DatadogMapping
 from migrator.source.datadog.model import ParseOk, VariableFilter
-from migrator.source.datadog.parse_query import parse_metric_query
+from migrator.source.datadog.parse_query import parse_metric_query, top_block
 from migrator.target import (
     Diagnostic,
     DiagnosticCode,
@@ -356,13 +356,11 @@ def _read_request(req: Any, path: str, wtype: str, c: _Collector) -> _Request | 
             text = fo["formula"]
             parsed = parse_formula(text)
             if not parsed.ok:
-                c.error(
-                    "UNSUPPORTED_FORMULA",
-                    f"{fpath}.formula",
+                message, action = top_block(text) or (
                     f"Formula syntax is not supported at offset {parsed.offset}.",
                     "Only +, -, *, / over query names and numbers convert.",
-                    text,
                 )
+                c.error("UNSUPPORTED_FORMULA", f"{fpath}.formula", message, action, text)
                 continue
             refs = references(parsed.formula)
             unknown = [r for r in refs if r not in queries]
@@ -404,13 +402,11 @@ def _compile_requests(
             qpath, text, _ = req.queries[name]
             parsed = parse_metric_query(text)
             if not parsed.ok:
-                c.error(
-                    parsed.code,
-                    qpath,
+                message, action = top_block(text) or (
                     parsed.message,
                     "Rewrite the query within the supported subset or migrate it manually.",
-                    text,
                 )
+                c.error(parsed.code, qpath, message, action, text)
                 continue
             result = compile_metric_query(
                 parsed.query,

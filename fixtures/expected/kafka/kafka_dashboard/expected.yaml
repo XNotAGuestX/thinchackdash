@@ -228,7 +228,7 @@ requests:
   expected:
     outcome: blocked
     errors:
-    - UNSUPPORTED_FORMULA
+    - UNSUPPORTED_QUERY_FUNCTION
 - source_path: widgets[5].definition.widgets[3].definition.requests[0]
   milestone: p2
   reviewed: false
@@ -291,7 +291,7 @@ requests:
   expected:
     outcome: blocked
     errors:
-    - UNSUPPORTED_FORMULA
+    - UNSUPPORTED_QUERY_FUNCTION
 - source_path: widgets[6].definition.widgets[4].definition.requests[0]
   milestone: p2
   reviewed: false
@@ -747,7 +747,7 @@ widgets:
   expected:
     outcome: blocked
     errors:
-    - UNSUPPORTED_FORMULA
+    - UNSUPPORTED_QUERY_FUNCTION
 - source_path: widgets[5].definition.widgets[3]
   type: timeseries
   milestone: p2
@@ -805,7 +805,7 @@ widgets:
   expected:
     outcome: blocked
     errors:
-    - UNSUPPORTED_FORMULA
+    - UNSUPPORTED_QUERY_FUNCTION
 - source_path: widgets[6].definition.widgets[4]
   type: timeseries
   milestone: p2

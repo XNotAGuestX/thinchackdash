@@ -203,3 +203,27 @@ def parse_metric_query(text: str) -> ParseResult:
         return ParseOk(query=_parse(scanner))
     except _Fail as fail:
         return _syntax_error(text, fail.pos)
+
+
+# Datadog `top()` stays blocked (#117). https://docs.datadoghq.com/dashboards/functions/rank/#top:
+#   "`top()` | Graph the top N elements." BY: "`max`: Maximum of all metrics values.",
+#   "`mean`: Mean of all metrics values.", "`last`: Last metrics value.", "`l2norm`: Uses the
+#   norm of the timeseries", "`area`: Signed area under the curve being graphed".
+# Datadog ranks each series once by one value over its points and graphs the chosen series whole.
+# PromQL `topk` ranks at every step: "the range query is just like an instant query run multiple
+# times at different timestamps" (https://prometheus.io/docs/prometheus/latest/querying/basics/).
+# The docs leave open which points are ranked (the graphed timeframe? raw or rolled-up points?),
+# how `l2norm` and `area` are computed, and the tie order. A whole-window ranking in PromQL would
+# also need a window other than `$__rate_interval` (`$__range`, `@ end()`). So `top()` blocks.
+TOP_DOC = "https://docs.datadoghq.com/dashboards/functions/rank/#top"
+TOP_MESSAGE = (
+    f"Function 'top' is not supported: Datadog ranks each series once over its points ({TOP_DOC}); "
+    "PromQL topk ranks at every step, and the docs leave the ranked window open."
+)
+TOP_ACTION = "Remove top() to convert all series unranked, or migrate this widget manually."
+
+
+def top_block(text: str) -> tuple[str, str] | None:
+    """(message, suggested action) when a query or formula is wrapped in Datadog `top()`."""
+    leading = _LEADING_FUNCTION.match(text)
+    return (TOP_MESSAGE, TOP_ACTION) if leading and leading.group(1) == "top" else None

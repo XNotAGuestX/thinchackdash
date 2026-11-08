@@ -48,6 +48,14 @@ def test_read_errors_stop_before_query_checks() -> None:
     assert be.rule_errors(req, VARS) == ["UNSUPPORTED_DATA_SOURCE", "UNSUPPORTED_FORMULA"]
 
 
+def test_abs_formula_is_allowed_but_other_formula_functions_block() -> None:
+    assert be.rule_errors(request("avg:x{*}", formulas=["abs(query1)"]), VARS) == []
+    assert be.blocked_functions(request("avg:x{*}", formulas=["abs(query1)"])) == []
+    req = request("avg:x{*}", formulas=["top(abs(query1), 5, 'mean', 'desc')"])
+    assert be.rule_errors(req, VARS) == ["UNSUPPORTED_FORMULA"]
+    assert be.query_error("abs(avg:x{*})", VARS) == "UNSUPPORTED_QUERY_FUNCTION"
+
+
 def test_only_queries_referenced_by_a_formula_are_checked() -> None:
     req = request("avg:x{*}", "count:y{*}", formulas=["query1 * 2"])
     assert be.rule_errors(req, VARS) == []

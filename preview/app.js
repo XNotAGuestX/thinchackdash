@@ -828,8 +828,6 @@
         <span class="stack" aria-hidden="true">${DONE_STATUS.filter(([s]) => g[s]).map(([s]) => `<em class="${s}" style="flex:${g[s]}"></em>`).join("")}</span>
       </li>`).join("");
 
-    renderEmpirical();
-
     const panels = real ? "widgets and monitors" : "panels and alerts";
     $("#moved-lead").textContent = `${c.converted} of ${total} ${panels} translated one to one. ${c.review} carry remarks to review, ${c.unsupported} ${c.unsupported === 1 ? "is" : "are"} blocked.`;
 
@@ -850,41 +848,6 @@
     // One primary action: Continue when the closing page is next, else download or results.
     if (!open) dl.hidden = true;
     $("#end-results").hidden = !open || !dl.hidden;
-  }
-
-  // The recorded live comparison (docs/LIVE_EXTENSIONS.md, "Observed result, 2026-11-08"):
-  // source formulas evaluated through the Datadog API and the generated queries in Dash0, over
-  // the same telemetry. It is fixed evidence for the converter, not a check of this run.
-  const EMPIRICAL = {
-    window: "2026-11-08, 03:44–03:54 UTC",
-    cases: [
-      { name: "Redis weighted used memory", outcome: "best_effort", diff: 0.35195, tol: 4.9 },
-      { name: "Redis average rollup, 60s", outcome: "best_effort", diff: 0, tol: 4.9 },
-      { name: "Redis maximum rollup, 60s", outcome: "best_effort", diff: 0.068225, tol: 4.9 },
-      { name: "PostgreSQL explicit rate", outcome: "best_effort", diff: 3.26633, tol: 4.9 },
-      { name: "Redis used-memory baseline", outcome: "translated", diff: 0.068225, tol: 3 },
-      { name: "Redis used/RSS dashboard ratio", outcome: "translated", diff: 0.068271, tol: 3 },
-      { name: "Average ratio monitor", outcome: "translated", diff: 0.072932, tol: 3 },
-      { name: "Maximum percentage monitor", outcome: "translated", diff: 0.068223, tol: 3 },
-    ],
-  };
-  const fmtPct = (n) => `${n < 0.01 && n > 0 ? n.toFixed(3) : n.toFixed(2)}%`;
-  function renderEmpirical() {
-    const list = EMPIRICAL.cases, passed = list.filter((c) => c.diff <= c.tol).length;
-    $("#emp-pass").textContent = `${passed}/${list.length}`;
-    $("#emp-lead").textContent = `Each case was queried in Datadog and, after conversion, in Dash0 over the same telemetry: ten one-minute buckets, ${EMPIRICAL.window}. Tolerances were declared before the run.`;
-    $("#emp-rows").innerHTML = list.map((c, k) => {
-      const ok = c.diff <= c.tol;
-      return `<li class="${ok ? "is-ok" : "is-bad"}" style="--k:${k}">
-        <p class="emp-name">${esc(c.name)}<span class="mono">${esc(OUTCOME[c.outcome] || c.outcome)}</span></p>
-        <div class="emp-meter">
-          <span class="emp-track" aria-hidden="true"><em style="width:${Math.min(100, (c.diff / c.tol) * 100).toFixed(1)}%"></em></span>
-          <span class="emp-val"><b>${fmtPct(c.diff)}</b><span class="mono faint">of ${c.tol}% allowed</span></span>
-        </div>
-        <p class="emp-res mono">${ok ? "Passed" : "Failed"}</p>
-      </li>`;
-    }).join("");
-    $("#emp-note").textContent = "Synthetic test suite, not the files in this conversion. Numeric agreement only: alert scheduling, notifications and no-data handling are not covered.";
   }
 
   function drawDonut() {

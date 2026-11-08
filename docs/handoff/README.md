@@ -145,3 +145,7 @@ behavior differences. See [LIVE_COMPARE.md](../LIVE_COMPARE.md#reuse-a-running-s
 - **B2** demo telemetry owner: open (#4).
 - **B3** Datadog account: horizon (#122).
 - **Starter/fork relationship:** open (#2).
+
+## Broad integration compatibility sweep
+
+[#169](https://github.com/XNotAGuestX/thinchackdash/issues/169) tests all 845 pinned dashboard/monitor files across 253 integrations without changing mappings or conversion rules. Both full runs are byte-identical; 116 non-note panels convert, across 24 dashboards and 18 integrations. Another 451 dashboards emit only notes. Additional integrations contribute 41 query panels, primarily shared host metrics. See [BROAD_INTEGRATION_TEST.md](../BROAD_INTEGRATION_TEST.md) for categories, representative integrations, blockers and scope. API/semantic validation was not run.

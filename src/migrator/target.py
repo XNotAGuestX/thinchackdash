@@ -38,11 +38,12 @@ DiagnosticCode = Literal[
     "TEXT_TRUNCATED",
     "APPROXIMATED",
     "ASSUMED",
+    "BEST_EFFORT",
     "IMPORT_FAILED",
     "IMPORT_RESULT_UNKNOWN",
 ]
 
-Outcome = Literal["translated", "approximated", "assumed", "partial", "blocked"]
+Outcome = Literal["translated", "approximated", "assumed", "best_effort", "partial", "blocked"]
 ItemKind = Literal["dashboard", "widget", "monitor"]
 Level = Literal["passed", "failed", "not_run"]
 
@@ -97,10 +98,11 @@ class ItemResult:
 
 
 def remark_outcome(diagnostics: list[Diagnostic]) -> tuple[Outcome, tuple[str, ...]]:
-    """Outcome and tags of a converted item from its diagnostics: `assumed` beats
-    `approximated` beats `translated`."""
+    """Strongest converted category and every tag in first-occurrence order."""
     tags = tuple(dict.fromkeys(d.remark for d in diagnostics if d.remark is not None))
     codes = {d.code for d in diagnostics}
+    if "BEST_EFFORT" in codes:
+        return "best_effort", tags
     if "ASSUMED" in codes:
         return "assumed", tags
     if "APPROXIMATED" in codes:

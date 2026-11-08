@@ -1,12 +1,14 @@
 """Remark tags: the approved reasons an item may convert although it is not an exact translation.
 
-Two categories, both "converted with remarks" (docs/REMARKS.md):
+Converted-with-remarks categories (docs/REMARKS.md):
 
 - ``approximated``: the conversion is exact except for one documented, minor behaviour the
   target lacks (a widget's own time range, a monitor's grace period).
 - ``assumed``: the exact Datadog metric has no OTel counterpart, but the value is rebuilt
   deterministically from OTel data under a stated, high-confidence assumption (an aggregation
   over attributes, a derived expression). Mapping entries reference these tags in ``assumption``.
+- ``best_effort``: a documented query function is implemented with deterministic sample/window
+  approximations. Live measurements apply to tested workloads, not every possible input.
 
 Every tag needs manual approval. A tag whose ``approved`` is None keeps blocking, exactly as
 without it. Only a human reviewer sets ``approved``, in the PR that adds or changes the tag;
@@ -19,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-Category = Literal["approximated", "assumed"]
+Category = Literal["approximated", "assumed", "best_effort"]
 
 
 @dataclass(frozen=True)
@@ -43,8 +45,41 @@ _DD_MONITOR_OPTIONS = "https://docs.datadoghq.com/monitors/configuration/"
 # These monitor options were approximated under A3 before remark tags existed (plan 06).
 _A3 = Approval("Felix (A3 allowlist, docs/handoff/00-context.md §3)", "2026-11-08")
 _FELIX = Approval("Felix", "2026-11-08")
+# Current-session instruction explicitly requests weighted/custom-PromQL and other useful
+# deterministic approximations, tagged best_effort and checked empirically case by case.
+_FUNCTIONS = Approval("Felix (explicit best-effort function request, #163/#164)", "2026-11-08")
 
 REMARKS: dict[str, Remark] = {
+    "WEIGHTED": Remark(
+        category="best_effort",
+        summary=(
+            "Weighted sum uses raw sample sums normalized by the fullest selected series in "
+            "the rate window. Datadog's submission cadence and graph buckets are unavailable; "
+            "unequal cadence, sparse series and resource churn can change the result."
+        ),
+        evidence="https://docs.datadoghq.com/dashboards/guide/how-weighted-works/",
+        approved=_FUNCTIONS,
+    ),
+    "ROLLUP": Remark(
+        category="best_effort",
+        summary=(
+            "Rollup uses a trailing PromQL sample window before space aggregation, instead of "
+            "Datadog's UNIX-aligned graph buckets. An omitted interval follows the target rate "
+            "window. Boundary values and sparse-series weights can differ."
+        ),
+        evidence="https://docs.datadoghq.com/dashboards/functions/rollup/",
+        approved=_FUNCTIONS,
+    ),
+    "ASRATE": Remark(
+        category="best_effort",
+        summary=(
+            "Rate uses the mapped cumulative counter and PromQL rate window. Datadog's "
+            "interpolation, source type metadata and rollup buckets can differ from PromQL's "
+            "counter-reset and extrapolation behavior."
+        ),
+        evidence="https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/",
+        approved=_FUNCTIONS,
+    ),
     # --- approximated -------------------------------------------------------------------
     # Datadog widget `time: {"live_span": X}` pins the widget to its own time frame. Neither
     # Perses nor Dash0 has a per-panel time range: Perses has only the dashboard `duration`,

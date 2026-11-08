@@ -1,6 +1,6 @@
 # Remarks: converted, but not an exact translation
 
-Most items either translate exactly or block. Two more outcomes cover items that convert while differing from the source in a known, bounded way. Each such reason is a **remark tag**: a short uppercase code with a one-line summary. The tag travels with the item into every artifact, so a reader in Dash0 can see why a panel or check rule isn't an exact copy.
+Most items either translate exactly or block. Other outcomes cover items that convert while differing from the source in a documented way. Each such reason is a **remark tag**: a short uppercase code with a one-line summary. The tag travels with the item into every artifact, so a reader in Dash0 can see why a panel or check rule isn't an exact copy.
 
 The registry is [`src/migrator/source/datadog/remarks.py`](../src/migrator/source/datadog/remarks.py). It is the single source of truth for tags, summaries, evidence and approvals.
 
@@ -11,10 +11,11 @@ The registry is [`src/migrator/source/datadog/remarks.py`](../src/migrator/sourc
 | `translated` | Exact translation. | Eligible. |
 | `approximated` | Exact except for one documented, minor behaviour the target lacks. | Eligible; published as its own group, tagged. |
 | `assumed` | The exact Datadog metric has no OTel counterpart. The value is rebuilt deterministically from OTel data under a stated, high-confidence assumption. | Eligible; published as its own group, tagged. |
+| `best_effort` | An explicitly supported query function uses a deterministic approximation of source aggregation or sampling semantics. Numeric error depends on the workload; live evidence applies only to the tested case. | Eligible; published as its own group, tagged. |
 | `partial` | Dashboard only: some widgets converted, some blocked. | Only with `--allow-partial`. |
 | `blocked` | Not converted. `report.json` says why. | Never. |
 
-- **Precedence:** an item with both kinds of tag is `assumed`, which beats `approximated`, which beats `translated`.
+- **Precedence:** `best_effort` beats `assumed`, which beats `approximated`, which beats `translated`. All reasons remain attached.
 - **Dashboard outcome:** a dashboard whose widgets all converted takes the strongest widget outcome. If any widget is blocked, the dashboard is `partial`.
 - **Exit code:** `convert` still exits `2` unless every item is `translated`.
 
@@ -26,21 +27,33 @@ The registry is [`src/migrator/source/datadog/remarks.py`](../src/migrator/sourc
 
 Every tag needs manual approval before it converts anything.
 - A tag with `approved=None` keeps blocking exactly as if it didn't exist. The block's suggested action names the tag that awaits approval.
-- Only a human reviewer sets `approved = Approval("<who>", "<YYYY-MM-DD>")`, in the PR that adds or changes the tag. Coding agents leave it `None`.
+- Only a human reviewer authorizes an approval. Explicit session instructions count: Felix requested deterministic best-effort query functions on 2026-11-08, including weighted(), with empirical tests and case-by-case tolerance generally below 5%. The registry records that authorization; it does not claim universal numerical equivalence.
 - Adding a new reason means adding a new tag. A new reason is never folded into an existing tag.
 
 ## Where tags appear
 
 | Artifact | Field |
 |---|---|
-| `report.json` | Each converted item's `remarks`; each `APPROXIMATED` / `ASSUMED` diagnostic's `remark` |
+| `report.json` | Each converted item's `remarks`; each `APPROXIMATED` / `ASSUMED` / `BEST_EFFORT` diagnostic's `remark` |
 | `manifest.json` | `remarks` on dashboard, check-rule and Prometheus-rule entries |
 | Perses panel | `spec.display.description`: `[TAG] summary`. Dash0 shows panel descriptions "in the panel header next to the name" ([Dash0 docs](https://www.dash0.com/docs/dash0/dashboards/configure-panels)). |
 | Perses dashboard | One line appended to `spec.display.description`: `Migration remarks: TAG … (see panel descriptions).` |
 | Check rule and Prometheus rules | Label `migration_remarks: "TAG1,TAG2"`. Dash0 merges check-rule labels into each failed check ([Dash0 docs](https://www.dash0.com/docs/dash0/monitoring/alerting/route-alert-check-notifications)). |
-| `publish` output | Groups in order: translated, approximated, assumed, partial. Each line ends with `[category: TAGS]`. |
+| `publish` output | Groups in order: translated, approximated, assumed, best_effort, partial. Each line ends with `[category: TAGS]`. |
 
 ## Tags
+
+### Best effort
+
+Felix authorized this category in the 2026-11-08 function-extension request. Every emitted query keeps its complete parsed input, explicit mapping and deterministic PromQL; unsupported combinations still block. No numerical bound is guaranteed by conversion. Live comparisons use a tolerance chosen for each case before execution, generally below 5%, and leave API/semantic evidence outside deterministic artifacts.
+
+| Tag | Supported case and limitation |
+|---|---|
+| `WEIGHTED` | Explicit `sum` of a directly mapped gauge. Raw sample sums divided by the fullest selected series' sample count approximate occupancy over the target rate window. Missing submission cadence, unequal sampling and resource churn can change the result. |
+| `ROLLUP` | A directly mapped gauge with a supported reducer and bounded interval. Trailing PromQL sample windows approximate Datadog's UNIX-aligned buckets. Missing intervals follow the target rate window. |
+| `ASRATE` | A mapped cumulative counter uses PromQL `rate`. Datadog's interpolation, rollup and source metadata can differ. |
+
+Function-specific grammar, equations and empirical limitations are documented in [FUNCTION_CONVERSION.md](FUNCTION_CONVERSION.md).
 
 ### Approximated
 

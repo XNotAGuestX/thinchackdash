@@ -262,6 +262,7 @@ def test_approximated_items_are_converted_and_eligible() -> None:
         "translated": 0,
         "approximated": 1,
         "assumed": 0,
+        "best_effort": 0,
         "partial": 0,
         "blocked": 0,
     }

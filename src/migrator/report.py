@@ -6,10 +6,12 @@ from typing import Any, Literal
 
 from migrator.target import ItemResult, Outcome
 
-OUTCOMES: tuple[Outcome, ...] = ("translated", "approximated", "assumed", "partial", "blocked")
+OUTCOMES: tuple[Outcome, ...] = (
+    "translated", "approximated", "assumed", "best_effort", "partial", "blocked"
+)
 # Converted outcomes: eligible to publish without a flag. The remark categories (approximated,
 # assumed) are published as their own groups and carry their tags (docs/REMARKS.md).
-CONVERTED: tuple[Outcome, ...] = ("translated", "approximated", "assumed")
+CONVERTED: tuple[Outcome, ...] = ("translated", "approximated", "assumed", "best_effort")
 ManifestKind = Literal["dashboard", "prometheus-rule", "check-rule", "source"]
 
 
@@ -67,7 +69,7 @@ def format_summary(report: dict[str, Any], slugs: dict[str, str]) -> str:
             ]
             done = sum(1 for w in widgets if w["outcome"] in CONVERTED)
             detail = f"{done}/{len(widgets)} widgets"
-            for category in ("approximated", "assumed"):
+            for category in CONVERTED[1:]:
                 n = sum(1 for w in widgets if w["outcome"] == category)
                 if n:
                     detail += f", {n} {category}"

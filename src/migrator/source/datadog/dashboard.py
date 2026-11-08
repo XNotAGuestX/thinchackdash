@@ -909,7 +909,9 @@ def compile_dashboard(
     outcome: Outcome
     if translated and translated == len(b.items):
         outcomes = {it.outcome for it in converted}
-        outcome = next((o for o in ("assumed", "approximated") if o in outcomes), "translated")
+        outcome = next(
+            (o for o in ("best_effort", "assumed", "approximated") if o in outcomes), "translated"
+        )
     elif translated:
         outcome = "partial"
     else:

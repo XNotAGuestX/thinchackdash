@@ -162,7 +162,7 @@ tests/scripts/                    # pytest: dev-time scripts (build_expected rul
 
 ## 8. Shared output contract
 
-**Outcomes.** Each item (dashboard, widget, monitor) has one: `translated | approximated | assumed | partial | blocked`. Only a dashboard can be `partial`. A widget or monitor is all or nothing; never drop a series.
+**Outcomes.** Each item (dashboard, widget, monitor) has one: `translated | approximated | assumed | best_effort | partial | blocked`. Only a dashboard can be `partial`. A widget or monitor is all or nothing; never drop a series. Converted-category precedence is `best_effort > assumed > approximated > translated`; any blocked widget makes an otherwise emitted dashboard `partial`. `best_effort` marks explicitly supported deterministic function approximations. Tagged diagnostics describe limitations; empirical evidence stays separate from compilation.
 
 **Approximated** and **assumed** mean converted with remarks: each reason is a remark tag in `src/migrator/source/datadog/remarks.py` that needs manual approval (only a human sets `approved`; an unapproved tag keeps blocking). `approximated`: exact except for one documented behaviour the target lacks (`TIMEPIN`, `FULLWINDOW`, `NEWHOST`). `assumed`: the Datadog metric has no exact OTel counterpart and a mapping entry's `assumption` tag (`AGG`, `DERIVED`, `ATTRVAL`, `SEMANTIC`) rebuilds it. Precedence assumed > approximated > translated; a dashboard with every widget converted takes the strongest widget outcome. Tags go to the report, manifest, panel and dashboard descriptions and a `migration_remarks` rule label; publish groups them separately. Mapping files may record unmappable metrics under `gaps` (tag + reason). Full rules: [docs/REMARKS.md](../REMARKS.md).
 
@@ -199,6 +199,7 @@ tests/scripts/                    # pytest: dev-time scripts (build_expected rul
 | `THRESHOLD_MISMATCH` | error | 06 |
 | `NOTIFICATION_NOT_MIGRATED` | warning | 06 |
 | `TEXT_TRUNCATED` | warning | 06 |
+| `BEST_EFFORT` | warning | #164; explicitly authorized approximate query functions |
 | `APPROXIMATED` | warning | remarks (`remark` = tag) |
 | `ASSUMED` | warning | remarks (`remark` = tag) |
 | `IMPORT_FAILED` | error | 07 |

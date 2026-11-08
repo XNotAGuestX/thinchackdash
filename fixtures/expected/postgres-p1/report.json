@@ -1314,12 +1314,12 @@
     },
     {
       "code": "UNSUPPORTED_QUERY_FUNCTION",
-      "message": "Query function '.as_count()' is not supported.",
+      "message": "'.as_count()' returns the change per Datadog rollup interval, which depends on the time range (https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/); PromQL over $__rate_interval has no exact equivalent.",
       "severity": "error",
       "sourceId": "dashboards/postgresql_screenboard_dashboard.json",
       "sourcePath": "widgets[3].definition.widgets[2].definition.requests[0].queries[0].query",
       "sourceText": "max:postgresql.deadlocks.count{$scope,$host} by {db}.as_count()",
-      "suggestedAction": "Remove the function from the source query or migrate this widget manually."
+      "suggestedAction": "Migrate this widget manually."
     },
     {
       "code": "OPTION_IGNORED",
@@ -2560,12 +2560,12 @@
     },
     {
       "code": "UNSUPPORTED_QUERY_FUNCTION",
-      "message": "Query function '.as_count()' is not supported.",
+      "message": "'.as_count()' returns the change per Datadog rollup interval, which depends on the time range (https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/); PromQL over $__rate_interval has no exact equivalent.",
       "severity": "error",
       "sourceId": "dashboards/postgresql_screenboard_dashboard.json",
       "sourcePath": "widgets[8].definition.widgets[0].definition.requests[0].queries[0].query",
       "sourceText": "sum:postgresql.bgwriter.checkpoints_timed{$scope,$db,$host}.as_count()",
-      "suggestedAction": "Remove the function from the source query or migrate this widget manually."
+      "suggestedAction": "Migrate this widget manually."
     },
     {
       "code": "OPTION_IGNORED",
@@ -2577,12 +2577,12 @@
     },
     {
       "code": "UNSUPPORTED_QUERY_FUNCTION",
-      "message": "Query function '.as_count()' is not supported.",
+      "message": "'.as_count()' returns the change per Datadog rollup interval, which depends on the time range (https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/); PromQL over $__rate_interval has no exact equivalent.",
       "severity": "error",
       "sourceId": "dashboards/postgresql_screenboard_dashboard.json",
       "sourcePath": "widgets[8].definition.widgets[0].definition.requests[0].queries[1].query",
       "sourceText": "sum:postgresql.bgwriter.checkpoints_requested{$scope,$db,$host}.as_count()",
-      "suggestedAction": "Remove the function from the source query or migrate this widget manually."
+      "suggestedAction": "Migrate this widget manually."
     },
     {
       "code": "OPTION_IGNORED",
@@ -2618,12 +2618,12 @@
     },
     {
       "code": "UNSUPPORTED_QUERY_FUNCTION",
-      "message": "Query function '.as_count()' is not supported.",
+      "message": "'.as_count()' returns the change per Datadog rollup interval, which depends on the time range (https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/); PromQL over $__rate_interval has no exact equivalent.",
       "severity": "error",
       "sourceId": "dashboards/postgresql_screenboard_dashboard.json",
       "sourcePath": "widgets[8].definition.widgets[0].definition.requests[1].queries[0].query",
       "sourceText": "sum:postgresql.bgwriter.checkpoints_requested{$scope,$db,$host}.as_count()",
-      "suggestedAction": "Remove the function from the source query or migrate this widget manually."
+      "suggestedAction": "Migrate this widget manually."
     },
     {
       "code": "OPTION_IGNORED",

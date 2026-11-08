@@ -126,6 +126,53 @@ def test_compiles_rate() -> None:
     )
 
 
+TYPE_MODIFIER_DOC = "https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/"
+AS_COUNT_BLOCK = (
+    "'.as_count()' returns the change per Datadog rollup interval, which depends on the time "
+    f"range ({TYPE_MODIFIER_DOC}); PromQL over $__rate_interval has no exact equivalent."
+)
+AS_RATE_BLOCK = (
+    "'.as_rate()' on a COUNT returns raw counts on tiny rollup intervals, not a per-second "
+    f"rate ({TYPE_MODIFIER_DOC}); the mapping does not record the Datadog in-app type."
+)
+
+
+def test_type_modifiers_stay_blocked_for_every_kind() -> None:
+    """Issue #118: .as_count() and .as_rate() block before the mapping lookup, on gauge and
+    rate entries alike, with a function-specific message. The first function decides."""
+    m = mapping(
+        postgresql__connections=entry(),
+        postgresql__rows_fetched=entry(
+            kind="rate", target={"name": "postgresql.tup_fetched", "type": "sum"}
+        ),
+    )
+    cases = {
+        "sum:postgresql.connections{*}.as_count()": AS_COUNT_BLOCK,
+        "sum:postgresql.rows_fetched{*} by {db}.as_count()": AS_COUNT_BLOCK,
+        "sum:postgresql.connections{*}.as_rate()": AS_RATE_BLOCK,
+        "sum:postgresql.rows_fetched{*}.as_rate().rollup(10)": AS_RATE_BLOCK,
+        "sum:not.mapped{*}.as_count()": AS_COUNT_BLOCK,
+    }
+    for text, message in cases.items():
+        r = run(text, m)
+        assert isinstance(r, CompiledError), text
+        (d,) = r.diagnostics
+        assert (d.code, d.severity, d.message) == ("UNSUPPORTED_QUERY_FUNCTION", "error", message)
+        assert d.suggested_action == "Migrate this widget manually.", text
+
+
+def test_type_modifier_with_arguments_stays_blocked() -> None:
+    for text in (
+        "sum:postgresql.connections{*}.as_count(5)",
+        "avg:postgresql.connections{*}.as_rate(sum)",
+    ):
+        r = run(text)
+        assert isinstance(r, CompiledError), text
+        (d,) = r.diagnostics
+        assert d.code == "UNSUPPORTED_QUERY_FUNCTION", text
+        assert d.message.endswith("is not supported."), text
+
+
 def test_appends_fixed_matchers_sorted_after_source_filters() -> None:
     m = mapping(
         system__net__bytes_rcvd=entry(

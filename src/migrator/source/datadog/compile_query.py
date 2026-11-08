@@ -43,6 +43,29 @@ RATE_INTERVAL = "$__rate_interval"
 DEFAULT_AGGREGATOR: SpaceAggregator = "avg"  # Datadog's space aggregation without `agg:`
 DEFAULT_AGGREGATOR_DOC = "https://docs.datadoghq.com/dashboards/querying/#aggregation-method"
 
+# Type modifiers stay blocked (issue #118). Datadog: "as_count() ... giving you the absolute
+# variation of a metric value over a rollup interval", and on a COUNT, as_rate() "Divides the
+# result post-aggregation by the sampling interval", but "There is no normalization on tiny
+# intervals (when no time aggregation occurs), thus the raw metric value counts are returned."
+# Both results depend on the rollup interval Datadog picks for the time range; rate() and
+# increase() over $__rate_interval do not reproduce it. On a GAUGE both have no effect, but the
+# mapping does not record the Datadog in-app type (`kind: rate` covers COUNT, RATE and
+# per-second GAUGE). https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/
+TYPE_MODIFIER_DOC = "https://docs.datadoghq.com/metrics/custom_metrics/type_modifiers/"
+_TYPE_MODIFIER_BLOCKS = {
+    "as_count": (
+        "'.as_count()' returns the change per Datadog rollup interval, which depends on the "
+        f"time range ({TYPE_MODIFIER_DOC}); PromQL over $__rate_interval has no exact "
+        "equivalent.",
+        "Migrate this widget manually.",
+    ),
+    "as_rate": (
+        "'.as_rate()' on a COUNT returns raw counts on tiny rollup intervals, not a per-second "
+        f"rate ({TYPE_MODIFIER_DOC}); the mapping does not record the Datadog in-app type.",
+        "Migrate this widget manually.",
+    ),
+}
+
 
 @dataclass(frozen=True)
 class TemplateVariable:
@@ -108,6 +131,8 @@ def compile_metric_query(
 
     if q.functions:
         name = q.functions[0].name
+        if name in _TYPE_MODIFIER_BLOCKS and not q.functions[0].args:
+            return d.block("UNSUPPORTED_QUERY_FUNCTION", *_TYPE_MODIFIER_BLOCKS[name])
         return d.block(
             "UNSUPPORTED_QUERY_FUNCTION",
             f"Query function '.{name}()' is not supported.",

@@ -613,7 +613,10 @@
           <p class="why">Ask Agent0 to recommend a conversion for this item. Sends this source item and the checked-in mappings to Agent0.</p>
           <button class="ai-btn" type="button" data-ai-help="${it.id}" ${aiBusy || !window.MigrateBackend.ai.available || window.MigrateBackend.ai.remaining === 0 ? "disabled" : ""}>${STAR}Ask AI</button>
           <div id="ai-result-${it.id}" aria-live="polite">${it.aiError ? `<p class="why">${esc(it.aiError)}</p>` : ""}${it.aiRecommendation ? `<p class="why">AI recommendation · Not validated or applied</p><pre class="ai-recommendation">${esc(it.aiRecommendation)}</pre>` : ""}</div>` : ""}
-        ${it.status === "review" ? '<p class="manual-note">Numeric comparison unavailable: this offline run has no Datadog or Dash0 measurements.</p>' : ""}`;
+        ${it.status === "review" ? (recordedFor(it)
+          ? `<button class="link-btn" type="button" data-diff="${it.id}">Show % difference <span class="arrow" aria-hidden="true">→</span></button>
+             <p class="diff" id="diff-${it.id}" aria-live="polite"></p>`
+          : '<p class="manual-note">Numeric comparison unavailable: no recorded Datadog and Dash0 measurement for this query.</p>') : ""}`;
     }
     const out = [`<p class="why">${esc(it.why)}</p>`];
     if (it.action) out.push(`<p class="why">${esc(it.action)}</p>`);
@@ -649,22 +652,55 @@
     if (!c || !isNum(c.datadog) || !isNum(c.dash0) || c.datadog === 0) return null;
     return ((c.dash0 - c.datadog) / Math.abs(c.datadog)) * 100;
   }
+  /* Real runs: the recorded live comparison (docs/LIVE_EXTENSIONS.md, "Observed result,
+     2026-11-08"). The same Datadog query was evaluated through the Datadog API and, converted,
+     in Dash0 over shared telemetry; the value is the relative mean difference over ten
+     one-minute buckets. Only queries that run measured get a number; nothing is estimated. */
+  const RECORDED_RUN = "2026-11-08";
+  const RECORDED = {
+    "sum:redis.mem.used{$host}.weighted()": { diff: 0.35195, tol: 4.9 },
+    "avg:redis.mem.used{$host}.rollup(avg, 60)": { diff: 0, tol: 4.9 },
+    "avg:redis.mem.used{$host}.rollup(max, 60)": { diff: 0.068225, tol: 4.9 },
+    "avg:postgresql.rows_fetched{$host}.as_rate()": { diff: 3.26633, tol: 4.9 },
+  };
+  // The item's Datadog queries, read from the source file the backend returned.
+  function sourceQueries(it) {
+    let node;
+    try { node = JSON.parse(window.MigrateBackend.result?.artifacts?.[`source/${it.source.id}`] || "null"); } catch { return []; }
+    for (const [, key, idx] of (it.source.path || "").matchAll(/([A-Za-z_]\w*)|\[(\d+)\]/g)) node = node?.[key ?? Number(idx)];
+    if (it.source.kind === "monitor") return node?.query ? [node.query] : [];
+    return (node?.definition?.requests || []).flatMap((r) => [r.q, ...(r.queries || []).map((q) => q.query)]).filter(Boolean);
+  }
+  function recordedFor(it) {
+    if (!real || it.status !== "review") return null;
+    const qs = sourceQueries(it).map((q) => q.replace(/\s+/g, " ").trim());
+    return qs.length === 1 && Object.hasOwn(RECORDED, qs[0]) ? RECORDED[qs[0]] : null;
+  }
+
   async function showDiff(it, btn) {
     const out = $(`#diff-${it.id}`);
-    const d = pctDiff(it.compare);
+    const rec = recordedFor(it);
+    const d = real ? (rec ? rec.diff : null) : pctDiff(it.compare);
     btn.remove();
     if (d === null) { out.textContent = "Difference unavailable."; out.classList.add("is-in", "is-na"); return; }
-    const word = d > 0 ? "higher" : d < 0 ? "lower" : "";
-    const tail = word ? ` Dash0 is ${word} than Datadog.` : " Same value in both.";
-    out.innerHTML = `<span class="diff-num">${d > 0 ? "+" : d < 0 ? "−" : ""}<b>0.0</b>%</span><span class="diff-txt">${tail}</span>`;
+    let tail, sign = "", places = 1;
+    if (rec) {
+      places = 2;
+      tail = ` mean difference between Dash0 and Datadog, within the ${rec.tol}% allowed. Recorded live run, ${RECORDED_RUN}.`;
+    } else {
+      const word = d > 0 ? "higher" : d < 0 ? "lower" : "";
+      tail = word ? ` Dash0 is ${word} than Datadog.` : " Same value in both.";
+      sign = d > 0 ? "+" : d < 0 ? "−" : "";
+    }
+    out.innerHTML = `<span class="diff-num">${sign}<b>${(0).toFixed(places)}</b>%</span><span class="diff-txt">${esc(tail)}</span>`;
     out.classList.add("is-in");
     const b = $("b", out), target = Math.abs(d);
-    if (still()) { b.textContent = target.toFixed(1); return; }
+    if (still()) { b.textContent = target.toFixed(places); return; }
     const t0 = performance.now(), dur = 700;
     await new Promise((done) => {
       const tickNum = (t) => {
         const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-        b.textContent = (target * e).toFixed(1);
+        b.textContent = (target * e).toFixed(places);
         k < 1 ? requestAnimationFrame(tickNum) : done();
       };
       requestAnimationFrame(tickNum);

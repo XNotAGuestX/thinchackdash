@@ -3,7 +3,13 @@
   "description": "Checkout health for the online shop: traffic through the NGINX front end, error rate and latency of the checkout service, and the cart cache and orders database behind it. Demo sample.",
   "layout_type": "ordered",
   "reflow_type": "fixed",
-  "template_variables": [],
+  "template_variables": [
+    {
+      "name": "host",
+      "prefix": "host",
+      "default": "*"
+    }
+  ],
   "notify_list": [],
   "widgets": [
     {
@@ -11,10 +17,20 @@
       "definition": {
         "type": "query_value",
         "title": "Checkout requests per second",
-        "requests": [{ "q": "sum:nginx.net.request_per_s{*}", "aggregator": "avg" }],
+        "requests": [
+          {
+            "q": "sum:nginx.net.request_per_s{*}",
+            "aggregator": "avg"
+          }
+        ],
         "precision": 1
       },
-      "layout": { "x": 0, "y": 0, "width": 3, "height": 2 }
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 3,
+        "height": 2
+      }
     },
     {
       "id": 1002,
@@ -22,9 +38,19 @@
         "type": "timeseries",
         "title": "Request volume by web host",
         "show_legend": true,
-        "requests": [{ "q": "sum:nginx.net.request_per_s{*} by {host}", "display_type": "bars" }]
+        "requests": [
+          {
+            "q": "sum:nginx.net.request_per_s{*} by {host}",
+            "display_type": "bars"
+          }
+        ]
       },
-      "layout": { "x": 3, "y": 0, "width": 9, "height": 2 }
+      "layout": {
+        "x": 3,
+        "y": 0,
+        "width": 9,
+        "height": 2
+      }
     },
     {
       "id": 1003,
@@ -35,71 +61,159 @@
           {
             "response_format": "timeseries",
             "queries": [
-              { "data_source": "metrics", "name": "errors", "query": "sum:trace.http.request.errors{service:checkout,env:prod}.as_rate()" },
-              { "data_source": "metrics", "name": "hits", "query": "sum:trace.http.request.hits{service:checkout,env:prod}.as_rate()" }
+              {
+                "data_source": "metrics",
+                "name": "errors",
+                "query": "sum:trace.http.request.errors{service:checkout,env:prod}.as_rate()"
+              },
+              {
+                "data_source": "metrics",
+                "name": "hits",
+                "query": "sum:trace.http.request.hits{service:checkout,env:prod}.as_rate()"
+              }
             ],
-            "formulas": [{ "formula": "100 * errors / hits", "alias": "Error rate" }],
+            "formulas": [
+              {
+                "formula": "100 * errors / hits",
+                "alias": "Error rate"
+              }
+            ],
             "display_type": "line"
           }
         ],
-        "markers": [{ "value": "y = 5", "display_type": "error dashed", "label": "Alert threshold" }]
+        "markers": [
+          {
+            "value": "y = 5",
+            "display_type": "error dashed",
+            "label": "Alert threshold"
+          }
+        ]
       },
-      "layout": { "x": 0, "y": 2, "width": 6, "height": 3 }
+      "layout": {
+        "x": 0,
+        "y": 2,
+        "width": 6,
+        "height": 3
+      }
     },
     {
       "id": 1004,
       "definition": {
         "type": "timeseries",
         "title": "Checkout response latency p95",
-        "requests": [{ "q": "max:trace.http.request.duration.by.service.95p{service:checkout,env:prod}", "display_type": "line" }]
+        "requests": [
+          {
+            "q": "max:trace.http.request.duration.by.service.95p{service:checkout,env:prod}",
+            "display_type": "line"
+          }
+        ]
       },
-      "layout": { "x": 6, "y": 2, "width": 6, "height": 3 }
+      "layout": {
+        "x": 6,
+        "y": 2,
+        "width": 6,
+        "height": 3
+      }
     },
     {
       "id": 1005,
       "definition": {
         "type": "timeseries",
-        "title": "Dropped connections",
-        "requests": [{ "q": "sum:nginx.net.conn_dropped_per_s{*}", "display_type": "bars" }]
+        "title": "Cart cache memory (weighted)",
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "a",
+                "query": "sum:redis.mem.used{$host}.weighted()"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "a"
+              }
+            ],
+            "display_type": "line"
+          }
+        ]
       },
-      "layout": { "x": 0, "y": 5, "width": 4, "height": 2 }
+      "layout": {
+        "x": 0,
+        "y": 5,
+        "width": 4,
+        "height": 2
+      }
     },
     {
       "id": 1006,
       "definition": {
         "type": "timeseries",
-        "title": "Cart cache hit rate (%)",
+        "title": "Orders database rows fetched per second",
         "requests": [
           {
             "response_format": "timeseries",
             "queries": [
-              { "data_source": "metrics", "name": "hits", "query": "sum:redis.stats.keyspace_hits{*}.as_rate()" },
-              { "data_source": "metrics", "name": "misses", "query": "sum:redis.stats.keyspace_misses{*}.as_rate()" }
+              {
+                "data_source": "metrics",
+                "name": "a",
+                "query": "avg:postgresql.rows_fetched{$host}.as_rate()"
+              }
             ],
-            "formulas": [{ "formula": "100 * hits / (hits + misses)", "alias": "Hit rate" }],
+            "formulas": [
+              {
+                "formula": "a"
+              }
+            ],
             "display_type": "line"
           }
         ]
       },
-      "layout": { "x": 4, "y": 5, "width": 4, "height": 2 }
+      "layout": {
+        "x": 4,
+        "y": 5,
+        "width": 4,
+        "height": 2
+      }
     },
     {
       "id": 1007,
       "definition": {
         "type": "timeseries",
         "title": "Orders database connections",
-        "requests": [{ "q": "sum:postgresql.connections{db:orders}", "display_type": "line" }]
+        "requests": [
+          {
+            "q": "sum:postgresql.connections{db:orders}",
+            "display_type": "line"
+          }
+        ]
       },
-      "layout": { "x": 8, "y": 5, "width": 4, "height": 2 }
+      "layout": {
+        "x": 8,
+        "y": 5,
+        "width": 4,
+        "height": 2
+      }
     },
     {
       "id": 1008,
       "definition": {
         "type": "timeseries",
         "title": "Web host CPU (user %)",
-        "requests": [{ "q": "avg:system.cpu.user{*} by {host}", "display_type": "line" }]
+        "requests": [
+          {
+            "q": "avg:system.cpu.user{*} by {host}",
+            "display_type": "line"
+          }
+        ]
       },
-      "layout": { "x": 0, "y": 7, "width": 12, "height": 2 }
+      "layout": {
+        "x": 0,
+        "y": 7,
+        "width": 12,
+        "height": 2
+      }
     }
   ]
 }

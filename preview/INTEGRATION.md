@@ -16,9 +16,16 @@ Samples live in `preview/samples/` and go through the same upload as picked file
 `checkout_dashboard.json` (a fictional online shop checkout dashboard: request volume,
 error rate, p95 latency, cart cache, orders database, host CPU) and
 `checkout_error_rate_monitor.json` (alert when the checkout error rate is above 5%).
-With the current mappings the converter returns 4 translated, 1 assumed, 1 best effort
-and 2 blocked widgets; the monitor is blocked. Error rate, latency and the monitor use
+With the current mappings the converter returns 4 translated, 2 best effort (WEIGHTED,
+ASRATE) and 2 blocked widgets; the monitor is blocked. Error rate, latency and the monitor use
 Datadog APM trace metrics (`trace.http.request.*`), which have no reviewed mapping yet.
+
+The two best-effort widgets use exactly the queries measured in the recorded live comparison
+([LIVE_EXTENSIONS.md](../docs/LIVE_EXTENSIONS.md), 2026-11-08). In their drawers, **Show %
+difference** reveals that run's relative mean difference between Datadog and Dash0 (0.35% and
+3.27%, both within the declared 4.9%). The UI matches on the item's source query text; any
+other review item says that no recorded measurement exists. Nothing is measured or estimated
+during an offline conversion.
 
 While the request runs, the run screen shows the dial and three steps (Read, Translate,
 Check) with minimum durations, so a fast answer is still visible. Once the report

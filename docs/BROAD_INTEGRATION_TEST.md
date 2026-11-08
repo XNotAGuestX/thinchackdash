@@ -8,7 +8,7 @@ The broad result is limited: **116 non-note panels emit metric queries**, across
 
 ## Scope and checks
 
-- Compiler: `207557f1d968162c9c18ef482ab0cb006f8116b9` (main after PR #166).
+- Initial compiler: `207557f1d968162c9c18ef482ab0cb006f8116b9` (main after PR #166). Latest-main confirmation: `ea029f50c47f43e0a5cebf63386b323b8964791b` (after PR #168); conversion totals are unchanged.
 - Source: `a9b9e42b7e484861ecbd1f5919da7c52a694b74d`.
 - Selection: every Git blob ending in `.json` beneath `<integration>/assets/dashboards/` or `<integration>/assets/monitors/`, including nested paths. The recursive upstream tree was not truncated. No integration allowlist or success-based filtering was used.
 - Inputs: 516 dashboard files and 329 monitor files; all 845 were recognized, none skipped. All source blobs and the original BSD-3-Clause license were downloaded read-only and verified against their pinned Git object hashes.
@@ -17,6 +17,12 @@ The broad result is limited: **116 non-note panels emit metric queries**, across
 - All **1,328 output files**, totaling **77,119,291 bytes per run**, matched byte-for-byte across the two runs. Every copied source matched its original bytes; every manifest hash matched its emitted file.
 - Emitted syntax/schema validation passed. API acceptance and semantic validation remained `not_run`; no vendor writes or live queries were performed.
 - `uv run migrator check`: Ruff and strict mypy (86 files) passed; **971 passed, 621 skipped** (unreviewed expectations), in 24.83 seconds, using uv-managed CPython 3.13.18 and `uv.lock`.
+
+### Latest-main confirmation
+
+Felix asked whether the test included the best assumptions and new fixes. The original test already included approved `assumed`, `approximated` and `best_effort` outcomes: derived/semantic mappings, TOPN, TIMEPIN, monitor arithmetic and the bounded weighted/rollup/as-rate functions. There was no exact-only filter.
+
+PR #168 merged afterward, so the complete cached corpus was rerun twice on `ea029f5`. All **1,328 files / 79,884,314 bytes** matched across those latest runs. Every source, destination payload and manifest was also byte-identical to the original `207557f` run. Existing report fields were unchanged; the new `mappingCoverage` field was added. Latest checks: Ruff and strict mypy (88 files) passed; **993 passed, 621 skipped**, in 26.93 seconds. Evidence is under `/private/tmp/thinchackdash-broad-latest-ea029f5/out/broad-latest/`.
 
 ## Conversion categories
 
@@ -82,6 +88,17 @@ Selected results below exclude static notes from both the converted count and de
 Counts overlap; a widget can have multiple errors. The compiler can stop before reaching another blocker, so these are observed failures, not projected gains. Log/event/security-product dashboards are included in this broad corpus and commonly fail the current metrics-only data-source restriction.
 
 Diagnostics reported **2,692 distinct missing metric names**. This is a lower bound on coverage gaps, because unsupported types, data sources or formulas can prevent metric compilation. Existing shared host mappings explain most new metric-panel conversions; this test adds no product mappings.
+
+Inspecting every raw dashboard metric query independently of widget blockers makes the main bottleneck clearer:
+
+| Raw query status | Occurrences |
+|---|---:|
+| Complete parse and a metric mapping exists | 314 |
+| Complete parse but no metric mapping | 6,798 |
+| Unsupported complete parse | 1,098 |
+| Total | 8,210 |
+
+The mapping catalogue has **92 entries** across Docker, Kafka, nginx, Postgres, Redis, host and ZooKeeper metrics. It has no native MySQL, MongoDB, Apache, RabbitMQ, Cassandra, Kubernetes or SQL Server mappings. There are **4,388 distinct parseable unmapped dashboard metric names**. This identifies missing implementation coverage; it does not establish that those metrics have no possible OTel equivalent. Even the 314 mapped occurrences can still fail label/function/formula checks, and an all-or-nothing widget fails if any displayed series is unsupported.
 
 The complete metric-query parser was also called on **8,210 raw dashboard metric-query occurrences** from 197 integrations: **7,112 parsed**, **1,098 returned unsupported diagnostics**, and **none raised an exception**. Unsupported results split into 904 syntax errors and 194 wrapping-function errors. There were 7,274 distinct query strings. A successful parse establishes syntax support only; suffix functions, mappings and widget behavior can still block conversion.
 

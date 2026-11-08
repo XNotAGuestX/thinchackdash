@@ -46,6 +46,10 @@ The real two-vendor run passed 4/6 cases at 3%; two Postgres connection cases di
 3.28% and remain failed. See [recorded evidence](docs/STATUS.md#live-shared-sample-comparison-2026-11-08).
 Imported checks remain disabled.
 
+For broader coverage, the [28-case infrastructure suite](docs/LIVE_COMPARE.md#reuse-a-running-stream)
+includes Kafka, host and Docker plus approved assumed/approximated cases. Start a retained
+stream once; subsequent suites reuse its real history without another collection wait.
+
 ## Convert (offline)
 
 ```bash

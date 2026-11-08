@@ -110,6 +110,17 @@ The script loads `.env` automatically; see [STATUS.md](../STATUS.md#live-shared-
 for the numeric outcome and recorded import IDs.
 Compiler semantics, mappings and review status are unchanged.
 
+Felix requested broader live coverage on 2026-11-08 in [#157](https://github.com/XNotAGuestX/thinchackdash/issues/157):
+28 cases across PostgreSQL, Redis, NGINX, Kafka, host and Docker, including approved assumed
+and approximated outcomes from pending PR #156. Its retained-stream lifecycle starts without
+a measurement wait and reuses completed historical windows for subsequent suites. The
+infrastructure suite is a two-minute smoke at the unchanged 3% tolerance; the original
+default suite keeps its ten-minute window. Live numeric parity does not certify the tagged
+behavior differences. See [LIVE_COMPARE.md](../LIVE_COMPARE.md#reuse-a-running-stream).
+The real short run finished **9 passed / 19 failed** at 3%; all seven assets read back.
+The stream remains running. Exact evidence is in [STATUS.md](../STATUS.md#expanded-live-infrastructure-smoke-2026-11-08);
+failure triage is [#161](https://github.com/XNotAGuestX/thinchackdash/issues/161).
+
 ## Open decisions and blockers
 
 - **A1** target vocabulary = names and labels as found in Dash0. *Assumed default.*

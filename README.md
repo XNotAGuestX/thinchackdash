@@ -4,6 +4,8 @@
 >
 > Built by **Felix Bischof, Madhav Gupta, Sofia Armstrong and Bjarne Zachaiae** (team MiaSanOutOfCredits) for the Dash0 case.
 
+**🌐 Live app: [thinchackdash.vercel.app](https://thinchackdash.vercel.app/).** The Migrate UI runs on Vercel with the deterministic converter behind `/api/convert`. Try a sample or drop in your own Datadog JSON.
+
 **📄 Presentation: [Deterministic Migration (Dash0 case)](00_dash0_case_pr%C3%A4sentation.pdf)**
 
 **🎬 Demo video (2 min): [demo/migrate-film.mp4](demo/migrate-film.mp4).** It shows the local UI converting the online-shop sample, with Jarvis, the ElevenLabs voice copilot, giving the tour and answering a live question.
